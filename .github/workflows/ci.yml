@@ -1,0 +1,112 @@
+name: CI
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        rust: [stable]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ matrix.rust }}
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Check formatting
+        run: cargo fmt -- --check
+
+      - name: Run clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Run tests
+        run: cargo test --verbose
+
+      - name: Build release
+        run: cargo build --release
+
+      - name: Test binary
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            target/release/env.exe --version
+          else
+            target/release/env --version
+          fi
+        shell: bash
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit
+
+      - name: Run security audit
+        run: cargo audit
+
+  # 检查发布准备状态
+  release-check:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Verify version consistency
+        run: |
+          VERSION=$(grep -E '^version\s*=' Cargo.toml | head -1 | cut -d'"' -f2)
+          TAG_VERSION=${GITHUB_REF#refs/tags/v}
+
+          if [ "v$VERSION" != "$TAG_VERSION" ]; then
+            echo "❌ 版本不一致: Cargo.toml ($VERSION) vs Tag (v$VERSION)"
+            exit 1
+          fi
+
+          echo "✅ 版本一致: v$VERSION"
+
+      - name: Check CHANGELOG
+        run: |
+          if [ -f "CHANGELOG.md" ]; then
+            if ! grep -q "## \[v${GITHUB_REF#refs/tags/v}\]" CHANGELOG.md; then
+              echo "⚠️  警告: CHANGELOG.md 中未找到此版本的记录"
+            else
+              echo "✅ CHANGELOG 已更新"
+            fi
+          else
+            echo "⚠️  警告: 未找到 CHANGELOG.md 文件"
+          fi
+
+      - name: Run full test suite
+        run: cargo test --all-features
+
+      - name: Check for warnings
+        run: |
+          WARNINGS=$(cargo clippy --all-targets --all-features 2>&1 | grep -c "warning:" || true)
+          if [ "$WARNINGS" -gt 0 ]; then
+            echo "❌ 发现 $WARNINGS 个 clippy 警告"
+            exit 1
+          fi
+          echo "✅ 无 clippy 警告"

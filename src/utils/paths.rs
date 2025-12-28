@@ -52,6 +52,24 @@ pub fn ensure_project_dir() -> Result<()> {
     Ok(())
 }
 
+/// 获取模板目录路径
+pub fn get_templates_dir() -> Result<PathBuf> {
+    let config_dir = get_config_dir()?;
+    Ok(config_dir.join("templates"))
+}
+
+/// 获取插件配置文件路径
+pub fn get_plugin_config_path() -> Result<PathBuf> {
+    let config_dir = get_config_dir()?;
+    Ok(config_dir.join("plugins.toml"))
+}
+
+/// 获取插件目录路径
+pub fn get_plugins_dir() -> Result<PathBuf> {
+    let config_dir = get_config_dir()?;
+    Ok(config_dir.join("plugins"))
+}
+
 /// 检查文件是否存在
 pub fn file_exists(path: &Path) -> bool {
     path.exists() && path.is_file()
@@ -63,20 +81,17 @@ pub fn read_file(path: &Path) -> Result<String> {
         return Err(EnvError::FileNotFound(path.to_path_buf()));
     }
     std::fs::read_to_string(path).map_err(|e| {
-        EnvError::Io(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            format!("读取文件 {} 失败: {}", path.display(), e),
-        ))
+        EnvError::Io(std::io::Error::other(format!("读取文件 {} 失败: {}", path.display(), e)))
     })
 }
 
 /// 安全写入文件 (使用临时文件 + 原子替换)
 pub fn write_file_safe(path: &Path, content: &str) -> Result<()> {
     // 确保父目录存在
-    if let Some(parent) = path.parent() {
-        if !parent.exists() {
-            std::fs::create_dir_all(parent)?;
-        }
+    if let Some(parent) = path.parent()
+        && !parent.exists()
+    {
+        std::fs::create_dir_all(parent)?;
     }
 
     // 写入临时文件
@@ -90,6 +105,9 @@ pub fn write_file_safe(path: &Path, content: &str) -> Result<()> {
 }
 
 /// 追加内容到文件 (如果内容已存在则不追加)
+///
+/// 注意：此函数目前未使用，保留作为工具函数供未来使用
+#[allow(dead_code)]
 pub fn append_to_file_unique(path: &Path, line: &str) -> Result<()> {
     // 如果文件存在，检查是否已有该行
     if path.exists() {
@@ -116,14 +134,409 @@ pub fn append_to_file_unique(path: &Path, line: &str) -> Result<()> {
 }
 
 /// 获取系统环境变量 (跨平台统一接口)
+///
+/// 在 Windows 上，会从注册表读取用户级环境变量以确保获取到最新设置的值
+/// 在 Unix 上，使用 std::env::vars() 读取当前进程环境变量
 pub fn get_system_env() -> Result<std::collections::HashMap<String, String>> {
     let mut env = std::collections::HashMap::new();
 
-    // 在 Unix 上区分大小写，Windows 上不区分
-    // 这里我们统一为大小写敏感，但在比较时会处理
-    for (key, value) in std::env::vars() {
-        env.insert(key, value);
+    #[cfg(target_os = "windows")]
+    {
+        // 在 Windows 上，从注册表读取用户级环境变量
+        use winreg::{RegKey, enums::HKEY_CURRENT_USER};
+
+        // 先添加当前进程的环境变量（包括系统级和继承的）
+        // 过滤掉空值和特殊变量
+        for (key, value) in std::env::vars() {
+            if !value.is_empty() && !key.starts_with('_') && key != "_" {
+                env.insert(key, value);
+            }
+        }
+
+        // 然后从注册表读取用户级环境变量，覆盖已存在的值
+        // 这样可以确保获取到最新设置的值
+        match RegKey::predef(HKEY_CURRENT_USER).open_subkey("Environment") {
+            Ok(reg_key) => {
+                // 枚举注册表中的所有值
+                for (name, _value_type) in reg_key.enum_values().flatten() {
+                    // 跳过特殊值（以_开头的通常是系统内部使用）
+                    if name.starts_with('_') || name == "_" {
+                        continue;
+                    }
+
+                    // 读取字符串值
+                    if let Ok(value) = reg_key.get_value::<String, _>(&name) {
+                        // 只添加非空值
+                        if !value.is_empty() {
+                            env.insert(name, value);
+                        }
+                    }
+                }
+            }
+            Err(_) => {
+                // 如果无法读取注册表，就只使用 std::env::vars()
+                // 这样至少能保证基本功能正常
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        // Unix/Linux/macOS: 使用 std::env::vars()
+        // 过滤掉空值和特殊变量
+        for (key, value) in std::env::vars() {
+            if !value.is_empty() && !key.starts_with('_') && key != "_" {
+                env.insert(key, value);
+            }
+        }
     }
 
     Ok(env)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    mod file_operations_tests {
+        use super::*;
+
+        #[test]
+        fn test_file_exists_with_existing_file() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let test_file = temp_dir.path().join("test.txt");
+            fs::write(&test_file, "content").unwrap();
+
+            assert!(file_exists(&test_file));
+        }
+
+        #[test]
+        fn test_file_exists_with_nonexistent_file() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let test_file = temp_dir.path().join("nonexistent.txt");
+
+            assert!(!file_exists(&test_file));
+        }
+
+        #[test]
+        fn test_file_exists_with_directory() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let test_dir = temp_dir.path().join("subdir");
+            fs::create_dir(&test_dir).unwrap();
+
+            assert!(!file_exists(&test_dir)); // 应该返回 false，因为是目录不是文件
+        }
+
+        #[test]
+        fn test_read_file_success() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let test_file = temp_dir.path().join("test.txt");
+            let content = "Hello, World!";
+            fs::write(&test_file, content).unwrap();
+
+            let result = read_file(&test_file);
+            assert!(result.is_ok());
+            assert_eq!(result.unwrap(), content);
+        }
+
+        #[test]
+        fn test_read_file_not_found() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let test_file = temp_dir.path().join("nonexistent.txt");
+
+            let result = read_file(&test_file);
+            assert!(result.is_err());
+            assert!(matches!(result.unwrap_err(), EnvError::FileNotFound(_)));
+        }
+
+        #[test]
+        fn test_write_file_safe_creates_file() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let test_file = temp_dir.path().join("test.txt");
+            let content = "test content";
+
+            let result = write_file_safe(&test_file, content);
+            assert!(result.is_ok());
+            assert!(test_file.exists());
+            assert_eq!(fs::read_to_string(&test_file).unwrap(), content);
+        }
+
+        #[test]
+        fn test_write_file_safe_overwrites_existing() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let test_file = temp_dir.path().join("test.txt");
+
+            fs::write(&test_file, "old content").unwrap();
+            let result = write_file_safe(&test_file, "new content");
+
+            assert!(result.is_ok());
+            assert_eq!(fs::read_to_string(&test_file).unwrap(), "new content");
+        }
+
+        #[test]
+        fn test_write_file_safe_creates_parent_dirs() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let test_file = temp_dir.path().join("subdir").join("test.txt");
+
+            let result = write_file_safe(&test_file, "content");
+            assert!(result.is_ok());
+            assert!(test_file.exists());
+        }
+
+        #[test]
+        fn test_append_to_file_unique_new_file() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let test_file = temp_dir.path().join("test.txt");
+            let line = "KEY=VALUE";
+
+            let result = append_to_file_unique(&test_file, line);
+            assert!(result.is_ok());
+
+            let content = fs::read_to_string(&test_file).unwrap();
+            assert!(content.contains(line));
+        }
+
+        #[test]
+        fn test_append_to_file_unique_duplicate() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let test_file = temp_dir.path().join("test.txt");
+            let line = "KEY=VALUE";
+
+            // 第一次追加
+            append_to_file_unique(&test_file, line).unwrap();
+            let content1 = fs::read_to_string(&test_file).unwrap();
+
+            // 第二次追加相同内容
+            append_to_file_unique(&test_file, line).unwrap();
+            let content2 = fs::read_to_string(&test_file).unwrap();
+
+            // 内容应该相同，没有重复
+            assert_eq!(content1, content2);
+            assert_eq!(content1.lines().count(), 1);
+        }
+
+        #[test]
+        fn test_append_to_file_unique_multiple_lines() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let test_file = temp_dir.path().join("test.txt");
+
+            append_to_file_unique(&test_file, "KEY1=VALUE1").unwrap();
+            append_to_file_unique(&test_file, "KEY2=VALUE2").unwrap();
+
+            let content = fs::read_to_string(&test_file).unwrap();
+            let lines: Vec<&str> = content.lines().collect();
+
+            assert_eq!(lines.len(), 2);
+            assert!(lines[0].contains("KEY1=VALUE1"));
+            assert!(lines[1].contains("KEY2=VALUE2"));
+        }
+
+        #[test]
+        fn test_append_to_file_unique_with_trailing_newline() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let test_file = temp_dir.path().join("test.txt");
+
+            // 写入初始内容（不带换行）
+            fs::write(&test_file, "EXISTING").unwrap();
+
+            append_to_file_unique(&test_file, "NEW").unwrap();
+
+            let content = fs::read_to_string(&test_file).unwrap();
+            assert!(content.contains("EXISTING"));
+            assert!(content.contains("NEW"));
+            assert_eq!(content.lines().count(), 2);
+        }
+    }
+
+    mod path_generation_tests {
+        use super::*;
+
+        #[test]
+        fn test_get_config_dir_success() {
+            // 这个测试依赖于系统环境，可能在不同环境表现不同
+            // 我们只验证它不 panic 并返回有效路径
+            let result = get_config_dir();
+            assert!(result.is_ok());
+
+            let path = result.unwrap();
+            assert!(path.is_absolute());
+            assert!(
+                path.to_string_lossy().contains(".envcli")
+                    || path.to_string_lossy().contains("envcli")
+            );
+        }
+
+        #[test]
+        fn test_get_layer_path_system_error() {
+            let result = get_layer_path(&EnvSource::System);
+            assert!(result.is_err());
+            assert!(matches!(result.unwrap_err(), EnvError::PermissionDenied(_)));
+        }
+
+        #[test]
+        fn test_get_layer_path_user() {
+            let result = get_layer_path(&EnvSource::User);
+            assert!(result.is_ok());
+
+            let path = result.unwrap();
+            assert!(path.to_string_lossy().contains("user.env"));
+        }
+
+        #[test]
+        fn test_get_layer_path_project() {
+            let result = get_layer_path(&EnvSource::Project);
+            assert!(result.is_ok());
+
+            let path = result.unwrap();
+            assert!(path.to_string_lossy().contains("project.env"));
+        }
+
+        #[test]
+        fn test_get_layer_path_local() {
+            let result = get_layer_path(&EnvSource::Local);
+            assert!(result.is_ok());
+
+            let path = result.unwrap();
+            assert!(path.to_string_lossy().contains("local.env"));
+        }
+
+        #[test]
+        fn test_get_templates_dir() {
+            let result = get_templates_dir();
+            assert!(result.is_ok());
+
+            let path = result.unwrap();
+            assert!(path.to_string_lossy().contains("templates"));
+        }
+
+        #[test]
+        fn test_ensure_config_dir_creates_directory() {
+            // 临时修改 HOME 环境变量（仅在测试中）
+            // 注意：由于 dirs::home_dir() 的限制，这个测试可能需要特殊处理
+            // 我们只验证函数签名和基本逻辑
+            let result = ensure_config_dir();
+            assert!(result.is_ok() || result.is_err()); // 取决于系统环境
+        }
+
+        #[test]
+        fn test_ensure_project_dir_creates_directory() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let original_dir = std::env::current_dir().unwrap();
+
+            // 切换到临时目录
+            std::env::set_current_dir(&temp_dir).unwrap();
+
+            let result = ensure_project_dir();
+            assert!(result.is_ok());
+
+            let project_dir = temp_dir.path().join(".envcli");
+            assert!(project_dir.exists());
+
+            // 恢复原目录
+            std::env::set_current_dir(original_dir).unwrap();
+        }
+
+        #[test]
+        fn test_ensure_project_dir_idempotent() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let original_dir = std::env::current_dir().unwrap();
+
+            std::env::set_current_dir(&temp_dir).unwrap();
+
+            // 第一次调用
+            ensure_project_dir().unwrap();
+            // 第二次调用（目录已存在）
+            let result = ensure_project_dir();
+
+            assert!(result.is_ok());
+
+            std::env::set_current_dir(original_dir).unwrap();
+        }
+    }
+
+    mod system_env_tests {
+        use super::*;
+
+        #[test]
+        fn test_get_system_env_returns_map() {
+            let result = get_system_env();
+            assert!(result.is_ok());
+
+            let env = result.unwrap();
+            // 应该包含一些系统环境变量
+            assert!(!env.is_empty());
+        }
+
+        #[test]
+        fn test_get_system_env_contains_path() {
+            let result = get_system_env();
+            assert!(result.is_ok());
+
+            let env = result.unwrap();
+            // 大多数系统都有 PATH 变量
+            // 注意：在某些环境下可能不存在，所以不强制要求
+            if env.contains_key("PATH") {
+                let path = env.get("PATH").unwrap();
+                assert!(!path.is_empty());
+            }
+        }
+
+        #[test]
+        fn test_get_system_env_includes_current_process_env() {
+            // 设置一个测试环境变量
+            unsafe {
+                std::env::set_var("TEST_ENV_VAR_UNIQUE_12345", "test_value");
+            }
+
+            let result = get_system_env();
+            assert!(result.is_ok());
+
+            let env = result.unwrap();
+            assert_eq!(
+                env.get("TEST_ENV_VAR_UNIQUE_12345"),
+                Some(&"test_value".to_string())
+            );
+
+            // 清理
+            unsafe {
+                std::env::remove_var("TEST_ENV_VAR_UNIQUE_12345");
+            }
+        }
+    }
+
+    mod integration_tests {
+        use super::*;
+
+        #[test]
+        fn test_full_workflow() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let original_dir = std::env::current_dir().unwrap();
+
+            // 切换到临时目录
+            std::env::set_current_dir(&temp_dir).unwrap();
+
+            // 1. 确保项目目录
+            ensure_project_dir().unwrap();
+
+            // 2. 获取本地层路径
+            let local_path = get_layer_path(&EnvSource::Local).unwrap();
+
+            // 3. 写入文件
+            write_file_safe(&local_path, "TEST_VAR=test_value").unwrap();
+
+            // 4. 读取文件
+            let content = read_file(&local_path).unwrap();
+            assert!(content.contains("TEST_VAR=test_value"));
+
+            // 5. 追加内容
+            append_to_file_unique(&local_path, "ANOTHER_VAR=another").unwrap();
+
+            // 6. 验证文件存在
+            assert!(file_exists(&local_path));
+
+            // 恢复原目录
+            std::env::set_current_dir(original_dir).unwrap();
+        }
+    }
 }

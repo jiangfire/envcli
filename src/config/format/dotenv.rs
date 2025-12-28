@@ -1,7 +1,7 @@
 //! .env 格式解析器 (简单原则：透明的文本解析)
 
-use crate::types::{EnvSource, EnvVar};
 use crate::error::{EnvError, Result};
+use crate::types::{EnvSource, EnvVar};
 
 /// .env 格式解析器
 pub struct DotenvParser;
@@ -81,18 +81,13 @@ impl DotenvParser {
 /// 这种简化的解析器处理常见场景
 ///
 /// # 示例
-/// ```
-/// # 数据库配置
+/// ```ignore
+/// # Database configuration
 /// DB_HOST=localhost
 /// DB_PORT=5432
 /// DB_USER=admin
-///
-/// # 特殊值
 /// EMPTY_VALUE=
 /// VALUE_WITH_SPACES = hello world
-/// MULTI_LINE=line1\
-/// line2\
-/// line3
 /// ```
 impl Default for DotenvParser {
     fn default() -> Self {
