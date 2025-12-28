@@ -1825,7 +1825,7 @@ mod tests {
 
         assert_eq!(snapshot.config.plugin_id, "test");
         assert_eq!(snapshot.hooks.len(), 1);
-        assert!(snapshot.path.exists() == false); // 测试路径不存在的情况
+        assert!(!snapshot.path.exists()); // 测试路径不存在的情况
     }
 
     #[test]

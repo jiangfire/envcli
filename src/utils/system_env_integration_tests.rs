@@ -23,7 +23,7 @@ mod windows_registry_tests {
         let _map: &HashMap<String, String> = &env;
 
         // 验证包含一些基本的系统变量
-        assert!(env.len() > 0);
+        assert!(!env.is_empty());
     }
 
     #[test]
@@ -141,7 +141,7 @@ mod cross_platform_tests {
         assert!(env.contains_key("PATH"));
 
         // 应该有一些变量
-        assert!(env.len() > 0);
+        assert!(!env.is_empty());
     }
 
     #[test]
@@ -152,10 +152,8 @@ mod cross_platform_tests {
         // 在 Windows 上，环境变量不区分大小写
         // 但我们的实现应该保持一致性
         // 这里验证基本的大小写行为
-        if env.contains_key("PATH") {
-            // 应该能找到 PATH
-            assert!(true);
-        }
+        // PATH 应该存在（无需额外断言）
+        let _ = env.contains_key("PATH");
     }
 }
 
@@ -189,7 +187,7 @@ mod error_handling_tests {
     fn test_get_system_env_no_panic() {
         // TDD: 验证不会 panic
         // 即使在异常情况下也应该返回 Result
-        let result = std::panic::catch_unwind(|| get_system_env());
+        let result = std::panic::catch_unwind(get_system_env);
         assert!(result.is_ok());
 
         let inner_result = result.unwrap();

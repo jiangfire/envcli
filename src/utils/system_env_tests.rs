@@ -19,8 +19,7 @@ mod comprehensive_tests {
     fn test_system_env_writer_struct_creation() {
         // TDD: 验证结构体可以被创建
         let _writer = SystemEnvWriter;
-        // 验证结构体存在且可使用
-        assert!(true);
+        // 验证结构体存在且可使用（无需额外断言）
     }
 
     // ==================== Windows PowerShell 脚本生成测试 ====================
@@ -255,8 +254,7 @@ mod comprehensive_tests {
         let _err1 = EnvError::SystemEnvWriteFailed("test".to_string());
         let _err2 = EnvError::AdminPrivilegesRequired("test".to_string());
         let _err3 = EnvError::InvalidArgument("test".to_string());
-
-        assert!(true); // 如果到这里都没panic，就通过
+        // 如果到这里都没panic，就通过（无需额外断言）
     }
 
     #[test]
@@ -561,7 +559,7 @@ mod comprehensive_tests {
     #[test]
     fn test_multiple_error_types() {
         // TDD: 多种错误类型
-        let errors = vec![
+        let errors = [
             EnvError::SystemEnvWriteFailed("write failed".to_string()),
             EnvError::AdminPrivilegesRequired("admin needed".to_string()),
             EnvError::InvalidArgument("invalid scope".to_string()),
@@ -692,8 +690,7 @@ mod comprehensive_tests {
         let key = "TEST_VAR";
         let value = "test_value";
 
-        // 所有平台都支持用户级
-        assert!(true);
+        // 所有平台都支持用户级（无需额外断言）
 
         // Windows 支持机器级
         #[cfg(target_os = "windows")]
@@ -708,9 +705,7 @@ mod comprehensive_tests {
         // Unix 不支持机器级
         #[cfg(not(target_os = "windows"))]
         {
-            // 验证预期行为
-            let machine_supported = false;
-            assert!(!machine_supported);
+            // 验证预期行为（无需额外断言）
         }
     }
 }
@@ -872,7 +867,7 @@ mod integration_tests {
     #[test]
     fn test_error_handling_workflow() {
         // TDD: 错误处理工作流
-        let errors = vec![
+        let errors = [
             EnvError::SystemEnvWriteFailed("磁盘已满".to_string()),
             EnvError::AdminPrivilegesRequired("需要管理员权限".to_string()),
             EnvError::InvalidArgument("无效的作用域".to_string()),
@@ -882,7 +877,6 @@ mod integration_tests {
         for error in errors {
             let display = error.to_string();
             assert!(!display.is_empty());
-            assert!(display.len() > 0);
         }
     }
 }
