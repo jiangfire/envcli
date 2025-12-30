@@ -242,6 +242,16 @@ pub enum Commands {
 
     // ==================== 系统工具 ====================
 
+    /// 配置管理命令组
+    ///
+    /// # 示例
+    /// envcli config validate
+    /// envcli config init
+    Config {
+        #[command(subcommand)]
+        command: ConfigCommands,
+    },
+
     /// 显示当前状态
     ///
     /// 显示配置目录、层级文件存在状态等
@@ -251,6 +261,38 @@ pub enum Commands {
     ///
     /// 检查常见问题并提供建议
     Doctor,
+}
+
+/// 配置管理子命令
+#[derive(Subcommand)]
+pub enum ConfigCommands {
+    /// 验证配置文件格式和完整性
+    ///
+    /// # 示例
+    /// envcli config validate
+    /// envcli config validate --verbose
+    Validate {
+        /// 显示详细信息
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// 初始化配置目录和默认文件
+    ///
+    /// # 示例
+    /// envcli config init
+    /// envcli config init --force
+    Init {
+        /// 强制重新初始化（覆盖现有文件）
+        #[arg(short, long)]
+        force: bool,
+    },
+
+    /// 显示配置信息
+    ///
+    /// # 示例
+    /// envcli config info
+    Info,
 }
 
 /// 模板管理子命令

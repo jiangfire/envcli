@@ -95,6 +95,11 @@ fn run_command(command: &Commands, store: Store, verbose: bool) -> Result<()> {
             handle_system_commands(&command, &store, &plugin_manager, &merged_env, verbose)
         }
 
+        // 配置类命令
+        Commands::Config { command: config_cmd } => {
+            handle_config_commands(config_cmd, verbose)
+        }
+
         // 模板类命令
         Commands::Template { command: template_cmd } => {
             handle_template_commands(template_cmd, verbose)
@@ -154,30 +159,124 @@ fn show_status(store: &Store, verbose: bool) -> Result<()> {
     Ok(())
 }
 
-/// 诊断问题
+/// 诊断问题 - 增强版，提供更全面的健康检查
 fn diagnose(store: &Store, verbose: bool) -> Result<()> {
-    println!("🔍 环境变量诊断工具\n");
+    println!("🔍 EnvCLI 健康诊断工具\n");
+    println!("版本: v0.1.0 | 平台: {}", std::env::consts::OS);
+    println!("──────────────────────────────────────────────\n");
 
     let mut issues = 0;
+    let mut warnings = 0;
 
     // 1. 检查配置目录
+    println!("📁 1. 配置目录检查");
     match utils::paths::get_config_dir() {
         Ok(dir) => {
             if !dir.exists() {
-                println!("⚠️  配置目录不存在: {}", dir.display());
-                println!("   解决：首次运行时会自动创建");
+                println!("   ❌ 配置目录不存在: {}", dir.display());
+                println!("   💡 解决: 首次运行时会自动创建");
                 issues += 1;
             } else {
-                println!("✓ 配置目录存在: {}", dir.display());
+                println!("   ✓ 配置目录存在: {}", dir.display());
+                if verbose {
+                    // 检查目录权限
+                    match std::fs::metadata(&dir) {
+                        Ok(metadata) => {
+                            if metadata.permissions().readonly() {
+                                println!("   ⚠️  目录为只读模式");
+                                warnings += 1;
+                            }
+                        }
+                        Err(_) => {
+                            println!("   ❌ 无法读取目录权限");
+                            issues += 1;
+                        }
+                    }
+                }
             }
         }
         Err(e) => {
-            println!("❌ 无法确定配置目录: {}", e);
+            println!("   ❌ 无法确定配置目录: {}", e);
             issues += 1;
         }
     }
+    println!();
 
-    // 2. 检查重复变量
+    // 2. 检查层级文件状态
+    println!("📄 2. 配置文件状态");
+    let mut file_count = 0;
+    for source in [EnvSource::System, EnvSource::User, EnvSource::Project, EnvSource::Local] {
+        let path = match utils::paths::get_layer_path(&source) {
+            Ok(p) => p,
+            Err(e) => {
+                println!("   ❌ {} 无法获取路径: {}", source, e);
+                issues += 1;
+                continue;
+            }
+        };
+
+        if utils::paths::file_exists(&path) {
+            file_count += 1;
+
+            // 尝试读取文件，处理权限问题
+            let content_result = utils::paths::read_file(&path);
+            match content_result {
+                Ok(content) => {
+                    let line_count = content.lines().count();
+                    let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+
+                    println!("   ✓ {} ({} 行, {} bytes)", source, line_count, size);
+
+                    // 检查空文件
+                    if content.trim().is_empty() {
+                        println!("     ⚠️  空文件");
+                        warnings += 1;
+                    }
+
+                    // 检查文件格式问题
+                    if verbose {
+                        let invalid_lines: Vec<_> = content.lines()
+                            .enumerate()
+                            .filter(|(_, line)| {
+                                let trimmed = line.trim();
+                                !trimmed.is_empty() && !trimmed.starts_with('#') && !trimmed.contains('=')
+                            })
+                            .map(|(i, line)| (i + 1, line))
+                            .collect();
+
+                        if !invalid_lines.is_empty() {
+                            println!("     ⚠️  发现 {} 行格式问题", invalid_lines.len());
+                            for (line_num, line) in invalid_lines.iter().take(3) {
+                                println!("       行 {}: {}", line_num, line);
+                            }
+                            if invalid_lines.len() > 3 {
+                                println!("       ... 还有 {} 行", invalid_lines.len() - 3);
+                            }
+                            issues += 1;
+                        }
+                    }
+                }
+                Err(EnvError::PermissionDenied(_msg)) => {
+                    println!("   ⚠️  {} 权限不足 (只读)", source);
+                    warnings += 1;
+                }
+                Err(e) => {
+                    println!("   ❌ {} 读取失败: {}", source, e);
+                    issues += 1;
+                }
+            }
+        } else {
+            println!("   ○ {} (不存在)", source);
+        }
+    }
+    if file_count == 0 {
+        println!("   ⚠️  未找到任何配置文件");
+        warnings += 1;
+    }
+    println!();
+
+    // 3. 检查重复变量
+    println!("🔄 3. 变量冲突检查");
     let all_vars = store.list(None)?;
     let mut key_map = std::collections::HashMap::new();
 
@@ -188,42 +287,329 @@ fn diagnose(store: &Store, verbose: bool) -> Result<()> {
             .push(&var.source);
     }
 
-    for (key, sources) in key_map {
+    let mut duplicate_count = 0;
+    for (key, sources) in &key_map {
         if sources.len() > 1 {
-            println!("⚠️  环境变量 {} 在多层定义:", key);
-            for source in sources {
-                println!("   - {}", source);
+            duplicate_count += 1;
+            if verbose || duplicate_count <= 5 {
+                println!("   ⚠️  {} 在 {} 层定义:", key, sources.len());
+                for source in sources {
+                    println!("     - {}", source);
+                }
             }
+        }
+    }
+
+    if duplicate_count > 5 {
+        println!("   ... 还有 {} 个重复变量", duplicate_count - 5);
+    }
+
+    if duplicate_count > 0 {
+        println!("   💡 建议: 使用 envcli get <key> 查看优先级");
+        issues += duplicate_count;
+    } else {
+        println!("   ✓ 无变量冲突");
+    }
+    println!();
+
+    // 4. 系统环境变量统计
+    println!("🖥️  4. 系统环境变量");
+    match utils::paths::get_system_env() {
+        Ok(system_vars) => {
+            println!("   总数: {} 个变量", system_vars.len());
+
+            if system_vars.len() > 100 {
+                println!("   ⚠️  系统变量较多，建议使用 --source 过滤");
+                warnings += 1;
+            }
+
+            if verbose {
+                // 显示一些关键变量
+                let key_vars = ["PATH", "HOME", "USERPROFILE", "TEMP", "TMP"];
+                for key in key_vars {
+                    if let Some(value) = system_vars.get(key) {
+                        let display_len = if value.len() > 50 { 47 } else { value.len() };
+                        println!("   ✓ {}={}", key, &value[..display_len]);
+                        if value.len() > 50 {
+                            println!("       ... ({} more chars)", value.len() - 50);
+                        }
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            println!("   ❌ 无法读取系统环境: {}", e);
             issues += 1;
         }
     }
+    println!();
 
-    // 3. 检查空文件
+    // 5. 插件系统检查（如果插件已加载）
+    println!("🔌 5. 插件系统状态");
+    let plugin_manager = PluginManager::new().unwrap_or_else(|_| PluginManager::empty());
+    let plugin_stats = plugin_manager.get_stats();
+    println!("   已加载插件: {}", plugin_stats.loaded_plugins);
+    println!("   总执行次数: {}", plugin_stats.total_executions);
+
+    if plugin_stats.loaded_plugins > 0 && verbose {
+        println!("   详细信息:");
+        for plugin in plugin_manager.list_plugins(true) {
+            println!("     - {} (v{})", plugin.metadata.id, plugin.metadata.version);
+        }
+    }
+    println!();
+
+    // 6. 运行环境检查
+    println!("🔧 6. 运行环境");
+    println!("   当前工作目录: {:?}", std::env::current_dir().unwrap_or_default());
+    println!("   可执行文件路径: {:?}", std::env::current_exe().unwrap_or_default());
+
+    // 检查 PATH
+    if let Some(path_var) = std::env::var_os("PATH") {
+        let path_count = std::env::split_paths(&path_var).count();
+        println!("   PATH 包含 {} 个目录", path_count);
+    }
+    println!();
+
+    // 总结
+    println!("──────────────────────────────────────────────");
+    if issues == 0 && warnings == 0 {
+        println!("✅ 所有检查通过，系统健康！");
+    } else {
+        if issues > 0 {
+            println!("❌ 发现 {} 个问题需要修复", issues);
+        }
+        if warnings > 0 {
+            println!("⚠️  发现 {} 个警告", warnings);
+        }
+
+        println!("\n💡 快速修复建议:");
+        if issues > 0 {
+            println!("   1. 运行 'envcli doctor --verbose' 查看详细信息");
+            println!("   2. 按照上述建议修复问题");
+            println!("   3. 再次运行诊断确认修复");
+        }
+        if warnings > 0 {
+            println!("   • 警告信息可选择性处理");
+        }
+    }
+
+    Ok(())
+}
+
+/// 处理配置管理命令
+fn handle_config_commands(command: &cli::ConfigCommands, verbose: bool) -> Result<()> {
+    match command {
+        cli::ConfigCommands::Validate { verbose: verbose_flag } => {
+            validate_config(*verbose_flag || verbose)
+        }
+        cli::ConfigCommands::Init { force } => {
+            init_config_files(*force)
+        }
+        cli::ConfigCommands::Info => {
+            show_config_info()
+        }
+    }
+}
+
+/// 验证配置文件格式和完整性
+fn validate_config(verbose: bool) -> Result<()> {
+    println!("🔍 配置文件验证\n");
+
+    let mut issues = 0;
+    let mut warnings = 0;
+
+    // 检查所有层级的配置文件
+    for source in [EnvSource::System, EnvSource::User, EnvSource::Project, EnvSource::Local] {
+        let path = utils::paths::get_layer_path(&source)?;
+
+        if utils::paths::file_exists(&path) {
+            println!("📄 {} 层级:", source);
+
+            // 读取文件内容
+            let content = utils::paths::read_file(&path)?;
+
+            // 检查空文件
+            if content.trim().is_empty() {
+                println!("   ⚠️  空文件");
+                warnings += 1;
+                continue;
+            }
+
+            // 检查格式
+            let mut line_num = 0;
+            let mut valid_vars = 0;
+            let mut invalid_lines = Vec::new();
+
+            for line in content.lines() {
+                line_num += 1;
+                let trimmed = line.trim();
+
+                // 跳过空行和注释
+                if trimmed.is_empty() || trimmed.starts_with('#') {
+                    continue;
+                }
+
+                // 检查是否包含等号
+                if let Some(eq_pos) = trimmed.find('=') {
+                    let key = trimmed[..eq_pos].trim();
+                    let value = trimmed[eq_pos + 1..].trim();
+
+                    if key.is_empty() {
+                        invalid_lines.push((line_num, "键名为空"));
+                        issues += 1;
+                    } else if value.is_empty() {
+                        warnings += 1;
+                        if verbose {
+                            println!("   ⚠️  行 {}: 值为空 (key={})", line_num, key);
+                        }
+                    } else {
+                        valid_vars += 1;
+                    }
+                } else {
+                    invalid_lines.push((line_num, "缺少等号"));
+                    issues += 1;
+                }
+            }
+
+            println!("   ✓ 有效变量: {}", valid_vars);
+
+            if !invalid_lines.is_empty() {
+                println!("   ❌ 格式错误:");
+                for (line_num, reason) in &invalid_lines {
+                    println!("      行 {}: {}", line_num, reason);
+                }
+            }
+
+            // 详细模式：显示所有变量
+            if verbose && valid_vars > 0 {
+                println!("   📋 变量列表:");
+                for line in content.lines() {
+                    let trimmed = line.trim();
+                    if !trimmed.is_empty() && !trimmed.starts_with('#') && trimmed.contains('=') {
+                        if let Some(eq_pos) = trimmed.find('=') {
+                            let key = trimmed[..eq_pos].trim();
+                            let value = trimmed[eq_pos + 1..].trim();
+                            let display_value = if value.len() > 30 {
+                                format!("{}...", &value[..27])
+                            } else {
+                                value.to_string()
+                            };
+                            println!("      {} = {}", key, display_value);
+                        }
+                    }
+                }
+            }
+            println!();
+        } else {
+            println!("📄 {} 层级: 不存在", source);
+        }
+    }
+
+    // 总结
+    println!("──────────────────────────────────────────────");
+    if issues == 0 && warnings == 0 {
+        println!("✅ 所有配置文件格式正确");
+    } else {
+        if issues > 0 {
+            println!("❌ 发现 {} 个格式错误", issues);
+        }
+        if warnings > 0 {
+            println!("⚠️  发现 {} 个警告", warnings);
+        }
+        println!("\n💡 建议:");
+        println!("   1. 格式: KEY=VALUE (每行一个)");
+        println!("   2. 注释以 # 开头");
+        println!("   3. 空行会被忽略");
+    }
+
+    Ok(())
+}
+
+/// 初始化配置文件
+fn init_config_files(force: bool) -> Result<()> {
+    println!("🔧 初始化配置文件\n");
+
+    let config_dir = utils::paths::get_config_dir()?;
+
+    // 检查配置目录是否存在
+    if config_dir.exists() && !force {
+        println!("⚠️  配置目录已存在: {}", config_dir.display());
+        println!("   使用 --force 重新初始化");
+        return Ok(());
+    }
+
+    // 创建配置目录
+    if !config_dir.exists() {
+        std::fs::create_dir_all(&config_dir)?;
+        println!("✓ 创建配置目录: {}", config_dir.display());
+    }
+
+    // 创建各层级文件（如果不存在或强制模式）
     for source in [EnvSource::User, EnvSource::Project, EnvSource::Local] {
         let path = utils::paths::get_layer_path(&source)?;
-        if utils::paths::file_exists(&path) {
-            let content = utils::paths::read_file(&path)?;
-            if content.trim().is_empty() {
-                println!("⚠️  空配置文件: {}", path.display());
-                issues += 1;
+
+        if !path.exists() || force {
+            // 创建空文件
+            std::fs::write(&path, "# EnvCLI 配置文件\n# 格式: KEY=VALUE\n\n")?;
+            println!("✓ 创建文件: {}", path.display());
+        } else {
+            println!("○ 文件已存在: {}", path.display());
+        }
+    }
+
+    println!("\n✅ 配置初始化完成");
+    println!("💡 提示:");
+    println!("   - 使用 'envcli set KEY VALUE' 添加变量");
+    println!("   - 使用 'envcli config validate' 验证配置");
+    println!("   - 使用 'envcli doctor' 诊断问题");
+
+    Ok(())
+}
+
+/// 显示配置信息
+fn show_config_info() -> Result<()> {
+    println!("📋 EnvCLI 配置信息\n");
+
+    // 配置目录
+    match utils::paths::get_config_dir() {
+        Ok(dir) => {
+            println!("配置目录: {}", dir.display());
+            if dir.exists() {
+                println!("状态: ✓ 存在");
+            } else {
+                println!("状态: ✗ 不存在");
             }
         }
-    }
-
-    // 4. 系统变量警告（如果过多）
-    if let Ok(system_vars) = utils::paths::get_system_env()
-        && system_vars.len() > 100
-    {
-        println!("ℹ️  系统环境变量较多 ({}), 建议使用 --source 过滤", system_vars.len());
-    }
-
-    if issues == 0 {
-        println!("✅ 未发现明显问题");
-    } else {
-        println!("\n发现 {} 个问题", issues);
-        if !verbose {
-            println!("提示：使用 --verbose 查看详细信息");
+        Err(e) => {
+            println!("配置目录: 无法确定 ({})", e);
         }
+    }
+    println!();
+
+    // 各层级文件状态
+    println!("层级文件:");
+    for source in [EnvSource::System, EnvSource::User, EnvSource::Project, EnvSource::Local] {
+        let path = utils::paths::get_layer_path(&source)?;
+        if utils::paths::file_exists(&path) {
+            let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+            let content = utils::paths::read_file(&path).unwrap_or_default();
+            let lines = content.lines().count();
+            println!("  {}: {} ({} bytes, {} lines)", source, path.display(), size, lines);
+        } else {
+            println!("  {}: 不存在", source);
+        }
+    }
+    println!();
+
+    // 系统信息
+    println!("系统信息:");
+    println!("  平台: {}", std::env::consts::OS);
+    println!("  版本: v0.1.0");
+
+    // 当前工作目录
+    if let Ok(cwd) = std::env::current_dir() {
+        println!("  工作目录: {}", cwd.display());
     }
 
     Ok(())
@@ -312,6 +698,7 @@ fn get_command_name(command: &Commands) -> &'static str {
         Commands::Export { .. } => "export",
         Commands::Status => "status",
         Commands::Doctor => "doctor",
+        Commands::Config { .. } => "config",
         Commands::Run { .. } => "run",
         Commands::Template { .. } => "template",
         Commands::Encrypt { .. } => "encrypt",
