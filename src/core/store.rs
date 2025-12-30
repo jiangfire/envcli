@@ -7,6 +7,26 @@ use crate::types::{Config, EncryptedEnvVar, EnvSource, EnvVar, EncryptionType};
 use crate::utils::encryption::SopsEncryptor;
 use crate::utils::paths::{self, file_exists, get_system_env, read_file, write_file_safe};
 use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::RwLock;
+use std::time::SystemTime;
+
+// ==================== 文件内容缓存 ====================
+
+/// 文件缓存条目
+#[derive(Clone)]
+struct FileCacheEntry {
+    vars: Vec<EnvVar>,
+    last_modified: SystemTime,
+}
+
+/// 全局文件缓存（使用 RwLock 优化读多写少场景）
+static FILE_CACHE: std::sync::OnceLock<RwLock<HashMap<PathBuf, FileCacheEntry>>> = std::sync::OnceLock::new();
+
+/// 获取文件缓存引用
+fn get_file_cache() -> &'static RwLock<HashMap<PathBuf, FileCacheEntry>> {
+    FILE_CACHE.get_or_init(|| RwLock::new(HashMap::new()))
+}
 
 /// 核心存储引擎 (遵循分离原则：接口与实现分离)
 #[derive(Clone)]
@@ -39,7 +59,7 @@ impl Store {
         Ok(None)
     }
 
-    /// 从指定源获取变量
+    /// 从指定源获取变量（带缓存）
     fn get_from_source(&self, key: &str, source: &EnvSource) -> Result<Option<String>> {
         // 系统层特殊处理
         if *source == EnvSource::System {
@@ -55,18 +75,74 @@ impl Store {
             return Ok(None);
         }
 
-        // 读取并解析文件
+        // 尝试从缓存获取
+        if let Some(cached_vars) = self.get_cached_vars(&path)? {
+            return Ok(cached_vars.iter()
+                .find(|v| v.key == key)
+                .map(|v| v.value.clone()));
+        }
+
+        // 缓存未命中，读取并解析
         let content = read_file(&path)?;
         let vars = DotenvParser::parse(&content, source)?;
 
+        // 更新缓存
+        self.update_cache(&path, vars.clone())?;
+
         // 查找目标变量
-        for var in vars {
-            if var.key == key {
-                return Ok(Some(var.value));
+        Ok(vars.iter()
+            .find(|v| v.key == key)
+            .map(|v| v.value.clone()))
+    }
+
+    /// 从缓存获取变量列表
+    fn get_cached_vars(&self, path: &PathBuf) -> Result<Option<Vec<EnvVar>>> {
+        if !file_exists(path) {
+            return Ok(None);
+        }
+
+        let cache = get_file_cache().read().unwrap();
+
+        if let Some(entry) = cache.get(path) {
+            // 检查文件是否被修改
+            let current_modified = std::fs::metadata(path)?.modified()?;
+            if entry.last_modified == current_modified {
+                return Ok(Some(entry.vars.clone()));
             }
         }
 
         Ok(None)
+    }
+
+    /// 更新缓存
+    fn update_cache(&self, path: &PathBuf, vars: Vec<EnvVar>) -> Result<()> {
+        let current_modified = std::fs::metadata(path)?.modified()?;
+
+        let mut cache = get_file_cache().write().unwrap();
+
+        cache.insert(
+            path.clone(),
+            FileCacheEntry {
+                vars,
+                last_modified: current_modified,
+            },
+        );
+
+        Ok(())
+    }
+
+    /// 清除指定路径的缓存
+    pub fn invalidate_cache(&self, path: &PathBuf) {
+        if let Ok(mut cache) = get_file_cache().write() {
+            cache.remove(path);
+        }
+    }
+
+    /// 清除所有文件缓存
+    pub fn clear_cache(&self) {
+        if let Ok(mut cache) = get_file_cache().write() {
+            cache.clear();
+        }
     }
 
     /// 设置变量（写入最高优先级可写层：Local）
@@ -146,7 +222,7 @@ impl Store {
         }
     }
 
-    /// 列出指定源的变量
+    /// 列出指定源的变量（带缓存）
     fn list_from_source(&self, source: &EnvSource) -> Result<Vec<EnvVar>> {
         match source {
             EnvSource::System => {
@@ -164,8 +240,14 @@ impl Store {
                     return Ok(vec![]);
                 }
 
+                // 使用缓存
+                if let Some(cached) = self.get_cached_vars(&path)? {
+                    return Ok(cached);
+                }
+
                 let content = read_file(&path)?;
                 let vars = DotenvParser::parse(&content, source)?;
+                self.update_cache(&path, vars.clone())?;
                 Ok(vars)
             }
         }
@@ -741,6 +823,9 @@ mod tests {
 
         #[test]
         fn test_get_system_env() {
+            // 清除系统环境缓存以确保测试独立性
+            crate::utils::paths::clear_system_env_cache();
+
             let temp_dir = tempfile::tempdir().unwrap();
             let original_dir = std::env::current_dir().unwrap();
 
@@ -761,6 +846,9 @@ mod tests {
                 std::env::remove_var("TEST_SYSTEM_VAR_999");
             }
             std::env::set_current_dir(original_dir).unwrap();
+
+            // 清除缓存，避免影响其他测试
+            crate::utils::paths::clear_system_env_cache();
         }
     }
 
@@ -1012,6 +1100,11 @@ mod tests {
 
         #[test]
         fn test_list_merged() {
+            // 清除文件缓存以确保测试独立性
+            let config_init = Config { verbose: false };
+            let store_init = Store::new(config_init);
+            store_init.clear_cache();
+
             let temp_dir = tempfile::tempdir().unwrap();
             let original_dir = std::env::current_dir().unwrap();
 

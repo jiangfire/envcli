@@ -73,18 +73,14 @@ impl EnvMerger {
     ) -> Result<HashMap<String, String>> {
         let mut env = HashMap::new();
 
-        // 1. 系统环境（最低优先级）
-        env.extend(crate::utils::paths::get_system_env()?);
+        // 一次性获取所有层级（已按优先级排序），避免重复遍历
+        let all_vars = store.list(None)?;
 
-        // 2. User → 3. Project → 4. Local (按顺序覆盖)
-        for source in [EnvSource::User, EnvSource::Project, EnvSource::Local] {
-            let vars = store.list(Some(source))?;
-            for var in vars {
-                env.insert(var.key, var.value);
-            }
+        for var in all_vars {
+            env.insert(var.key, var.value);
         }
 
-        // 5. 临时变量（最高优先级）
+        // 临时变量覆盖（最高优先级）
         for (key, value) in temp_vars {
             env.insert(key.clone(), value.clone());
         }
@@ -352,6 +348,9 @@ DB_PORT=5432
 
         #[test]
         fn test_merge_environment_with_system_vars() {
+            // 清除系统环境缓存以确保测试独立性
+            crate::utils::paths::clear_system_env_cache();
+
             with_temp_store(|_temp_dir, store| {
                 // 设置一个测试系统变量
                 unsafe {
@@ -373,6 +372,9 @@ DB_PORT=5432
                     std::env::remove_var("TEST_SYSTEM_VAR_UNIQUE_999");
                 }
             });
+
+            // 清除缓存，避免影响其他测试
+            crate::utils::paths::clear_system_env_cache();
         }
 
         #[test]

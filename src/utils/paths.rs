@@ -2,7 +2,119 @@
 
 use crate::error::{EnvError, Result};
 use crate::types::EnvSource;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
+
+// ==================== 系统环境缓存 ====================
+
+/// 系统环境变量缓存结构
+struct SystemEnvCache {
+    env: HashMap<String, String>,
+    timestamp: Instant,
+}
+
+impl SystemEnvCache {
+    /// 检查缓存是否有效（60秒 TTL）
+    fn is_valid(&self) -> bool {
+        self.timestamp.elapsed() < Duration::from_secs(60)
+    }
+}
+
+/// 全局缓存实例（使用 OnceLock 确保线程安全）
+static SYSTEM_ENV_CACHE: std::sync::OnceLock<Mutex<Option<SystemEnvCache>>> = std::sync::OnceLock::new();
+
+/// 实际读取系统环境的内部函数（无缓存）
+fn read_system_env_from_source() -> Result<HashMap<String, String>> {
+    let mut env = HashMap::new();
+
+    #[cfg(target_os = "windows")]
+    {
+        use winreg::{RegKey, enums::HKEY_CURRENT_USER};
+
+        // 先添加当前进程的环境变量
+        for (key, value) in std::env::vars() {
+            if !value.is_empty() && !key.starts_with('_') && key != "_" {
+                env.insert(key, value);
+            }
+        }
+
+        // 从注册表读取用户级环境变量
+        match RegKey::predef(HKEY_CURRENT_USER).open_subkey("Environment") {
+            Ok(reg_key) => {
+                for (name, _value_type) in reg_key.enum_values().flatten() {
+                    if name.starts_with('_') || name == "_" {
+                        continue;
+                    }
+                    if let Ok(value) = reg_key.get_value::<String, _>(&name) {
+                        if !value.is_empty() {
+                            env.insert(name, value);
+                        }
+                    }
+                }
+            }
+            Err(_) => {}
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        for (key, value) in std::env::vars() {
+            if !value.is_empty() && !key.starts_with('_') && key != "_" {
+                env.insert(key, value);
+            }
+        }
+    }
+
+    Ok(env)
+}
+
+/// 获取系统环境变量（带缓存）
+///
+/// 使用 60 秒 TTL 的内存缓存来避免重复的系统调用
+pub fn get_system_env() -> Result<HashMap<String, String>> {
+    let cache_guard = SYSTEM_ENV_CACHE.get_or_init(|| Mutex::new(None));
+    let mut cache_opt = cache_guard.lock().unwrap();
+
+    // 检查缓存有效性
+    if let Some(cache) = &*cache_opt {
+        if cache.is_valid() {
+            return Ok(cache.env.clone());
+        }
+    }
+
+    // 缓存失效，重新读取
+    let env = read_system_env_from_source()?;
+
+    // 更新缓存
+    *cache_opt = Some(SystemEnvCache {
+        env: env.clone(),
+        timestamp: Instant::now(),
+    });
+
+    Ok(env)
+}
+
+/// 手动清除系统环境缓存（用于测试或强制刷新）
+pub fn clear_system_env_cache() {
+    if let Some(cache) = SYSTEM_ENV_CACHE.get() {
+        let mut guard = cache.lock().unwrap();
+        *guard = None;
+    }
+}
+
+/// 获取系统环境缓存统计信息
+pub fn get_system_env_cache_stats() -> (bool, Duration) {
+    if let Some(cache) = SYSTEM_ENV_CACHE.get() {
+        if let Ok(guard) = cache.lock() {
+            if let Some(c) = &*guard {
+                return (true, c.timestamp.elapsed());
+            }
+        }
+    }
+    (false, Duration::from_secs(0))
+}
 
 /// 获取用户配置目录：~/.envcli
 pub fn get_config_dir() -> Result<PathBuf> {
@@ -131,67 +243,6 @@ pub fn append_to_file_unique(path: &Path, line: &str) -> Result<()> {
     content.push('\n');
 
     write_file_safe(path, &content)
-}
-
-/// 获取系统环境变量 (跨平台统一接口)
-///
-/// 在 Windows 上，会从注册表读取用户级环境变量以确保获取到最新设置的值
-/// 在 Unix 上，使用 std::env::vars() 读取当前进程环境变量
-pub fn get_system_env() -> Result<std::collections::HashMap<String, String>> {
-    let mut env = std::collections::HashMap::new();
-
-    #[cfg(target_os = "windows")]
-    {
-        // 在 Windows 上，从注册表读取用户级环境变量
-        use winreg::{RegKey, enums::HKEY_CURRENT_USER};
-
-        // 先添加当前进程的环境变量（包括系统级和继承的）
-        // 过滤掉空值和特殊变量
-        for (key, value) in std::env::vars() {
-            if !value.is_empty() && !key.starts_with('_') && key != "_" {
-                env.insert(key, value);
-            }
-        }
-
-        // 然后从注册表读取用户级环境变量，覆盖已存在的值
-        // 这样可以确保获取到最新设置的值
-        match RegKey::predef(HKEY_CURRENT_USER).open_subkey("Environment") {
-            Ok(reg_key) => {
-                // 枚举注册表中的所有值
-                for (name, _value_type) in reg_key.enum_values().flatten() {
-                    // 跳过特殊值（以_开头的通常是系统内部使用）
-                    if name.starts_with('_') || name == "_" {
-                        continue;
-                    }
-
-                    // 读取字符串值
-                    if let Ok(value) = reg_key.get_value::<String, _>(&name) {
-                        // 只添加非空值
-                        if !value.is_empty() {
-                            env.insert(name, value);
-                        }
-                    }
-                }
-            }
-            Err(_) => {
-                // 如果无法读取注册表，就只使用 std::env::vars()
-                // 这样至少能保证基本功能正常
-            }
-        }
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        // Unix/Linux/macOS: 使用 std::env::vars()
-        // 过滤掉空值和特殊变量
-        for (key, value) in std::env::vars() {
-            if !value.is_empty() && !key.starts_with('_') && key != "_" {
-                env.insert(key, value);
-            }
-        }
-    }
-
-    Ok(env)
 }
 
 #[cfg(test)]
@@ -460,6 +511,9 @@ mod tests {
 
         #[test]
         fn test_get_system_env_returns_map() {
+            // 清除缓存以确保测试独立性
+            clear_system_env_cache();
+
             let result = get_system_env();
             assert!(result.is_ok());
 
@@ -470,6 +524,9 @@ mod tests {
 
         #[test]
         fn test_get_system_env_contains_path() {
+            // 清除缓存以确保测试独立性
+            clear_system_env_cache();
+
             let result = get_system_env();
             assert!(result.is_ok());
 
@@ -484,6 +541,9 @@ mod tests {
 
         #[test]
         fn test_get_system_env_includes_current_process_env() {
+            // 清除缓存以确保测试独立性
+            clear_system_env_cache();
+
             // 设置一个测试环境变量
             unsafe {
                 std::env::set_var("TEST_ENV_VAR_UNIQUE_12345", "test_value");
@@ -502,6 +562,9 @@ mod tests {
             unsafe {
                 std::env::remove_var("TEST_ENV_VAR_UNIQUE_12345");
             }
+
+            // 清除缓存，避免影响其他测试
+            clear_system_env_cache();
         }
     }
 

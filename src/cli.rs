@@ -261,6 +261,17 @@ pub enum Commands {
     ///
     /// 检查常见问题并提供建议
     Doctor,
+
+    /// 缓存管理命令组
+    ///
+    /// # 示例
+    /// envcli cache stats
+    /// envcli cache clear file
+    /// envcli cache clear all
+    Cache {
+        #[command(subcommand)]
+        command: CacheCommands,
+    },
 }
 
 /// 配置管理子命令
@@ -365,6 +376,28 @@ pub enum TemplateCommands {
     Delete {
         /// 模板名称
         name: String,
+    },
+}
+
+/// 缓存管理子命令
+#[derive(Subcommand)]
+pub enum CacheCommands {
+    /// 显示缓存统计信息
+    ///
+    /// # 示例
+    /// envcli cache stats
+    Stats,
+
+    /// 清除缓存
+    ///
+    /// # 示例
+    /// envcli cache clear file      # 清除文件缓存
+    /// envcli cache clear system    # 清除系统环境缓存
+    /// envcli cache clear all       # 清除所有缓存
+    Clear {
+        /// 缓存类型：file/system/all
+        #[arg(value_name = "TYPE")]
+        cache_type: String,
     },
 }
 
