@@ -36,7 +36,7 @@ fn main() {
     let store = Store::new(config.clone());
 
     // 执行命令，统一错误处理
-    let result = run_command(cli.command, store, config.verbose);
+    let result = run_command(&cli.command, store, config.verbose);
 
     match result {
         Ok(_) => {
@@ -57,530 +57,59 @@ fn init_config(cli: &Cli) -> Result<Config> {
     })
 }
 
-/// 运行具体命令（带插件钩子集成）
-fn run_command(command: Commands, store: Store, verbose: bool) -> Result<()> {
+/// 运行具体命令（带插件钩子集成）- 简化为路由分发器
+fn run_command(command: &Commands, store: Store, verbose: bool) -> Result<()> {
     // 创建插件管理器（如果失败则使用空管理器）
     let plugin_manager = PluginManager::new().unwrap_or_else(|_| PluginManager::empty());
 
-    // 准备钩子上下文
-    let command_name = match &command {
-        Commands::Get { .. } => "get",
-        Commands::Set { .. } => "set",
-        Commands::Unset { .. } => "unset",
-        Commands::List { .. } => "list",
-        Commands::Import { .. } => "import",
-        Commands::Export { .. } => "export",
-        Commands::Status => "status",
-        Commands::Doctor => "doctor",
-        Commands::Run { .. } => "run",
-        Commands::Template { .. } => "template",
-        Commands::Encrypt { .. } => "encrypt",
-        Commands::Decrypt { .. } => "decrypt",
-        Commands::SetEncrypt { .. } => "set-encrypt",
-        Commands::CheckSops => "check-sops",
-        Commands::Plugin { .. } => "plugin",
-        Commands::SystemSet { .. } => "system-set",
-        Commands::SystemUnset { .. } => "system-unset",
-    };
+    // 获取命令名称
+    let command_name = get_command_name(command);
 
     // 执行 PreCommand 钩子
-    let pre_context = HookContext {
-        command: command_name,
-        args: &[],
-        env: HashMap::new(),
-        plugin_data: HashMap::new(),
-        continue_execution: true,
-        error: None,
-    };
+    let (_, merged_env) = execute_pre_command_hooks(command_name, &plugin_manager, verbose)?;
 
-    let pre_results = plugin_manager.execute_hooks(HookType::PreCommand, &pre_context)?;
-
-    // 检查是否继续执行
-    for result in &pre_results {
-        if !result.continue_execution {
-            if verbose {
-                println!("⚠️  插件阻止了命令执行: {:?}", result.message);
-            }
-            return Ok(());
-        }
-    }
-
-    // 合并 PreCommand 钩子修改的环境变量
-    let mut merged_env = HashMap::new();
-    for result in &pre_results {
-        for (k, v) in &result.modified_env {
-            merged_env.insert(k.clone(), v.clone());
-        }
-    }
-
-    // 执行命令
-    let result = match command {
-        // 读取系列
-        Commands::Get { key } => {
-            // 检查是否有插件修改的环境变量
-            if let Some(value) = merged_env.get(&key) {
-                println!("{}", value);
-                Ok(())
-            } else {
-                match store.get(&key)? {
-                    Some(value) => {
-                        println!("{}", value);
-                        Ok(())
-                    }
-                    None => Err(EnvError::NotFound(key)),
-                }
-            }
+    // 根据命令类型分发到对应的处理函数
+    let result = match &command {
+        // 读取类命令
+        Commands::Get { .. } | Commands::List { .. } | Commands::Export { .. } | Commands::Status => {
+            handle_read_commands(&command, &store, &merged_env, verbose)
         }
 
-        // 写入系列
-        Commands::Set { key, value } => {
-            // 应用插件修改
-            if let Some(plugin_value) = merged_env.get(&key) {
-                store.set(key.clone(), plugin_value.clone())?;
-            } else {
-                store.set(key, value)?;
-            }
-            Ok(())
+        // 写入类命令
+        Commands::Set { .. } | Commands::Unset { .. } | Commands::Import { .. } => {
+            handle_write_commands(&command, &store, &merged_env, verbose)
         }
 
-        Commands::Unset { key } => {
-            let deleted = store.unset(&key)?;
-            if verbose && deleted {
-                println!("✓ 已删除");
-            } else if !deleted {
-                return Err(EnvError::NotFound(key));
-            }
-            Ok(())
+        // 插件类命令
+        Commands::Plugin { command: plugin_cmd } => {
+            handle_plugin_commands(plugin_cmd, verbose)
         }
 
-        // 列出系列
-        Commands::List { source, format } => {
-            let source_filter = cli::parse_list_source(source.as_deref())?;
-            let output_format = cli::parse_format(&format);
-            let mut vars = store.list(source_filter)?;
-
-            // 合并插件添加的环境变量
-            for (k, v) in &merged_env {
-                vars.push(envcli::types::EnvVar::new(
-                    k.clone(),
-                    v.clone(),
-                    EnvSource::Local, // 插件添加的变量归入 Local 层
-                ));
-            }
-
-            match output_format {
-                OutputFormat::ENV => {
-                    for var in &vars {
-                        println!("{}={}", var.key, var.value);
-                    }
-                }
-                OutputFormat::JSON => {
-                    let json = serde_json::to_string_pretty(&vars)?;
-                    println!("{}", json);
-                }
-            }
-            Ok(())
+        // 加密类命令
+        Commands::Encrypt { .. } | Commands::Decrypt { .. } | Commands::SetEncrypt { .. } | Commands::CheckSops => {
+            handle_encrypt_commands(&command, &store, verbose)
         }
 
-        // 导入系列
-        Commands::Import { file, target } => {
-            let target_source = cli::validate_writable_source(&target)?;
-            let count = store.import_file(&file, &target_source)?;
-            if verbose {
-                println!("✓ 成功导入 {} 个变量", count);
-            }
-            Ok(())
+        // 系统类命令
+        Commands::SystemSet { .. } | Commands::SystemUnset { .. } | Commands::Doctor | Commands::Run { .. } => {
+            handle_system_commands(&command, &store, &plugin_manager, &merged_env, verbose)
         }
 
-        // 导出系列
-        Commands::Export { source, format } => {
-            let source_filter = cli::parse_list_source(source.as_deref())?;
-            let output_format = cli::parse_format(&format);
-            let content = store.export(source_filter.clone())?;
-
-            match output_format {
-                OutputFormat::ENV => println!("{}", content),
-                OutputFormat::JSON => {
-                    let vars = store.list(source_filter)?;
-                    let json = serde_json::to_string_pretty(&vars)?;
-                    println!("{}", json);
-                }
-            }
-            Ok(())
-        }
-
-        // 状态显示
-        Commands::Status => {
-            show_status(&store, verbose)
-        }
-
-        // 问题诊断
-        Commands::Doctor => {
-            diagnose(&store, verbose)
-        }
-
-        // 运行命令注入环境变量
-        Commands::Run {
-            env,
-            from_file,
-            command: cmd,
-        } => {
-            // 执行 PreRun 钩子
-            let pre_run_context = HookContext {
-                command: "run",
-                args: &[],
-                env: HashMap::new(),
-                plugin_data: HashMap::new(),
-                continue_execution: true,
-                error: None,
-            };
-            let pre_run_results = plugin_manager.execute_hooks(HookType::PreRun, &pre_run_context)?;
-
-            // 合并 PreRun 钩子的环境变量
-            let mut run_env = HashMap::new();
-            for result in &pre_run_results {
-                for (k, v) in &result.modified_env {
-                    run_env.insert(k.clone(), v.clone());
-                }
-            }
-
-            // 1. 解析临时环境变量
-            let mut temp_vars = utils::env_merge::EnvMerger::parse_temp_vars(&env)?;
-
-            // 2. 如果指定了文件，从文件加载
-            if let Some(file_path) = from_file {
-                let file_vars = utils::env_merge::EnvMerger::parse_file(&file_path)?;
-                temp_vars.extend(file_vars);
-            }
-
-            // 3. 合并插件的环境变量
-            temp_vars.extend(run_env);
-
-            // 4. 构建完整环境（按优先级合并）
-            let final_env = utils::env_merge::EnvMerger::merge_environment(&store, &temp_vars)?;
-
-            // 5. 执行命令
-            let exit_code = utils::executor::CommandExecutor::exec_with_env(&cmd, &final_env)?;
-
-            // 6. 执行 PostRun 钩子
-            let post_run_context = HookContext {
-                command: "run",
-                args: &[],
-                env: final_env,
-                plugin_data: HashMap::new(),
-                continue_execution: true,
-                error: None,
-            };
-            let _ = plugin_manager.execute_hooks(HookType::PostRun, &post_run_context)?;
-
-            // 7. 退出码透传
-            std::process::exit(exit_code);
-        }
-
-        // 模板管理
-        Commands::Template { command } => {
-            let engine = template::TemplateEngine::new()?;
-            run_template_command(command, &engine, verbose)
-        }
-
-        // 加密相关命令
-        Commands::Encrypt { key, value, target } => {
-            let target_source = cli::validate_writable_source(&target)?;
-
-            // 检查 SOPS
-            store.check_sops()?;
-
-            if target_source == EnvSource::Local {
-                store.set_encrypted(key.clone(), value)?;
-                if verbose {
-                    println!("✓ 已加密并存储变量: {}", key);
-                }
-            } else {
-                return Err(EnvError::PermissionDenied(
-                    "加密存储目前只支持 local 层".to_string(),
-                ));
-            }
-            Ok(())
-        }
-
-        Commands::Decrypt { key, source } => {
-            let encryptor = SopsEncryptor::new();
-            let value = if let Some(source_str) = source {
-                let source_filter = cli::parse_list_source(Some(&source_str))?;
-                let vars = store.list_encrypted(source_filter)?;
-                if let Some(var) = vars.iter().find(|v| v.key == key) {
-                    if var.is_encrypted() {
-                        encryptor.decrypt(&var.value)?
-                    } else {
-                        var.value.clone()
-                    }
-                } else {
-                    return Err(EnvError::NotFound(key));
-                }
-            } else {
-                match store.get_decrypted(&key)? {
-                    Some(v) => v,
-                    None => return Err(EnvError::NotFound(key)),
-                }
-            };
-
-            println!("{}", value);
-            Ok(())
-        }
-
-        Commands::SetEncrypt { key, value, encrypt } => {
-            if encrypt {
-                store.check_sops()?;
-                store.set_encrypted(key.clone(), value)?;
-                if verbose {
-                    println!("✓ 已加密并存储变量: {}", key);
-                }
-            } else {
-                store.set(key, value)?;
-                if verbose {
-                    println!("✓ 已存储变量");
-                }
-            }
-            Ok(())
-        }
-
-        Commands::CheckSops => {
-            store.check_sops()?;
-            let version = SopsEncryptor::version()?;
-            println!("✓ SOPS 可用");
-            println!("版本: {}", version);
-            Ok(())
-        }
-
-        // 插件管理
-        Commands::Plugin { command } => {
-            run_plugin_command(command, verbose)
-        }
-
-        // 系统环境变量设置
-        Commands::SystemSet { key, value, scope } => {
-            // 验证作用域
-            cli::validate_scope(&scope)?;
-
-            // 权限提示
-            if scope == "machine" {
-                eprintln!("⚠️  警告: 设置机器级变量需要管理员权限");
-                eprintln!("   Windows: 可能需要 UAC 提升");
-                eprintln!("   Unix/Linux: 不支持机器级变量");
-            }
-
-            // 执行设置
-            store.set_system(key.clone(), value.clone(), &scope)?;
-
-            if verbose {
-                println!("✓ 已设置系统环境变量 {} = {} (scope: {})", key, value, scope);
-
-                // Unix 额外提示
-                #[cfg(not(target_os = "windows"))]
-                if scope == "global" {
-                    eprintln!("   请运行 'source ~/.bashrc' 或重新打开终端使更改生效");
-                }
-            }
-            Ok(())
-        }
-
-        // 系统环境变量删除
-        Commands::SystemUnset { key, scope } => {
-            // 验证作用域
-            cli::validate_scope(&scope)?;
-
-            // 执行删除
-            store.unset_system(key.clone(), &scope)?;
-
-            if verbose {
-                println!("✓ 已删除系统环境变量 {} (scope: {})", key, scope);
-
-                // Unix 额外提示
-                #[cfg(not(target_os = "windows"))]
-                if scope == "global" {
-                    eprintln!("   请运行 'source ~/.bashrc' 或重新打开终端使更改生效");
-                }
-            }
-            Ok(())
+        // 模板类命令
+        Commands::Template { command: template_cmd } => {
+            handle_template_commands(template_cmd, verbose)
         }
     };
 
-    // 执行 PostCommand 钩子（仅在成功时）
-    if result.is_ok() {
-        let post_context = HookContext {
-            command: command_name,
-            args: &[],
-            env: HashMap::new(),
-            plugin_data: HashMap::new(),
-            continue_execution: true,
-            error: None,
-        };
-        let _ = plugin_manager.execute_hooks(HookType::PostCommand, &post_context)?;
-    }
+    // 执行命令后的钩子
+    let _ = execute_post_command_hooks(command_name, &plugin_manager)?;
 
-    // 如果有错误，执行 Error 钩子
-    if let Err(e) = &result {
-        let error_context = HookContext {
-            command: command_name,
-            args: &[],
-            env: HashMap::new(),
-            plugin_data: HashMap::new(),
-            continue_execution: true,
-            error: Some(e.to_string()),
-        };
-        let _ = plugin_manager.execute_hooks(HookType::Error, &error_context)?;
+    // 如果命令执行失败，执行错误钩子
+    if let Err(ref e) = result {
+        let _ = execute_error_hooks(command_name, e, &plugin_manager)?;
     }
 
     result
-}
-
-/// 处理模板子命令
-fn run_template_command(
-    command: TemplateCommands,
-    engine: &template::TemplateEngine,
-    verbose: bool,
-) -> Result<()> {
-    match command {
-        TemplateCommands::Create { name, vars, inherits } => {
-            let template = engine.create_template(&name, &vars, &inherits)?;
-
-            if verbose {
-                println!("✓ 已创建模板: {}", template.name);
-                println!("  变量: {}", template.variables.len());
-                if !template.inherits.is_empty() {
-                    println!("  继承: {}", template.inherits.join(", "));
-                }
-            }
-        }
-
-        TemplateCommands::List { verbose: list_verbose } => {
-            let templates = engine.list_templates()?;
-
-            if templates.is_empty() {
-                println!("暂无模板");
-                return Ok(());
-            }
-
-            for template in templates {
-                println!("{}", template.name);
-
-                if list_verbose {
-                    // 显示变量详情
-                    for var in &template.variables {
-                        let required = if var.required { "必需" } else { "可选" };
-                        match &var.default {
-                            Some(default) => {
-                                println!("  {} = {} ({})", var.name, default, required)
-                            }
-                            None => println!("  {} ({})", var.name, required),
-                        }
-                    }
-
-                    // 显示继承关系
-                    if !template.inherits.is_empty() {
-                        println!("  继承: {}", template.inherits.join(", "));
-                    }
-                    println!();
-                }
-            }
-        }
-
-        TemplateCommands::Show { name } => {
-            let template = engine.get_template(&name)?;
-
-            println!("模板: {}", template.name);
-            println!("\n变量:");
-
-            for var in &template.variables {
-                let required = if var.required { "必需" } else { "可选" };
-                match &var.default {
-                    Some(default) => println!("  {} = {} ({})", var.name, default, required),
-                    None => println!("  {} ({})", var.name, required),
-                }
-            }
-
-            if !template.inherits.is_empty() {
-                println!("\n继承: {}", template.inherits.join(", "));
-            }
-
-            println!("\n内容:");
-            println!("{}", template.content);
-        }
-
-        TemplateCommands::Render { name, var, interactive, output } => {
-            // 解析变量参数
-            let mut variables = HashMap::new();
-            for v in &var {
-                if let Some(pos) = v.find('=') {
-                    let key = v[..pos].to_string();
-                    let value = v[pos + 1..].to_string();
-                    variables.insert(key, value);
-                }
-            }
-
-            // 交互式模式：检查缺失变量
-            if interactive {
-                let template = engine.get_template(&name)?;
-                for var_def in &template.variables {
-                    if !variables.contains_key(&var_def.name) {
-                        if var_def.required {
-                            println!("请输入必需变量 {}: ", var_def.name);
-                            let mut input = String::new();
-                            std::io::stdin().read_line(&mut input).map_err(|e| {
-                                EnvError::Io(std::io::Error::other(e))
-                            })?;
-                            variables.insert(var_def.name.clone(), input.trim().to_string());
-                        } else if let Some(default) = &var_def.default {
-                            println!("变量 {} (默认: {}): ", var_def.name, default);
-                            let mut input = String::new();
-                            std::io::stdin().read_line(&mut input).map_err(|e| {
-                                EnvError::Io(std::io::Error::other(e))
-                            })?;
-                            let value = input.trim();
-                            if !value.is_empty() {
-                                variables.insert(var_def.name.clone(), value.to_string());
-                            } else {
-                                variables.insert(var_def.name.clone(), default.clone());
-                            }
-                        }
-                    }
-                }
-            }
-
-            // 渲染模板
-            let result = engine.render_template(&name, &variables)?;
-
-            // 输出结果
-            match output {
-                Some(file_path) => {
-                    // 写入文件
-                    let path = std::path::Path::new(&file_path);
-                    utils::paths::write_file_safe(path, &result)?;
-                    if verbose {
-                        println!("✓ 已渲染并保存到: {}", file_path);
-                    }
-                }
-                None => {
-                    // 输出到 stdout
-                    println!("{}", result);
-                }
-            }
-        }
-
-        TemplateCommands::Delete { name } => {
-            let deleted = engine.delete_template(&name)?;
-
-            if deleted {
-                if verbose {
-                    println!("✓ 已删除模板: {}", name);
-                }
-            } else {
-                return Err(EnvError::TemplateNotFound(name));
-            }
-        }
-    }
-
-    Ok(())
 }
 
 /// 显示当前状态 (详细信息，但仍然保持简洁)
@@ -700,13 +229,310 @@ fn diagnose(store: &Store, verbose: bool) -> Result<()> {
     Ok(())
 }
 
-/// 处理插件子命令
-fn run_plugin_command(command: PluginCommands, verbose: bool) -> Result<()> {
+// ==================== 重构辅助函数 (KISS/DRY/LOD 原则) ====================
+
+/// 执行插件钩子（提取重复逻辑）
+fn execute_plugin_hooks(
+    hook_type: HookType,
+    context: &HookContext,
+    plugin_manager: &PluginManager,
+) -> Result<Vec<envcli::plugin::HookResult>> {
+    Ok(plugin_manager.execute_hooks(hook_type, context)?)
+}
+
+/// 合并插件环境变量（提取重复逻辑）
+fn merge_plugin_env(results: &[envcli::plugin::HookResult]) -> HashMap<String, String> {
+    let mut merged_env = HashMap::new();
+    for result in results {
+        for (k, v) in &result.modified_env {
+            merged_env.insert(k.clone(), v.clone());
+        }
+    }
+    merged_env
+}
+
+/// 检查插件是否阻止执行（提取重复逻辑）
+fn check_plugin_block(results: &[envcli::plugin::HookResult], verbose: bool) -> Result<()> {
+    for result in results {
+        if !result.continue_execution {
+            if verbose {
+                println!("⚠️  插件阻止了命令执行: {:?}", result.message);
+            }
+            return Ok(()); // 返回 Ok 但停止执行
+        }
+    }
+    Ok(())
+}
+
+/// 验证作用域参数（提取重复逻辑）
+fn validate_scope(scope: &str) -> Result<()> {
+    if scope != "global" && scope != "machine" {
+        return Err(EnvError::InvalidArgument(
+            "scope 必须是 'global' 或 'machine'".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+/// 创建钩子上下文（提取重复逻辑）
+fn create_hook_context(command: &str) -> HookContext<'_> {
+    HookContext {
+        command,
+        args: &[],
+        env: HashMap::new(),
+        plugin_data: HashMap::new(),
+        continue_execution: true,
+        error: None,
+    }
+}
+
+/// 通用结果处理器（提取重复逻辑）
+fn handle_result<T>(result: Result<T>, verbose: bool, success_msg: Option<&str>) -> Result<()> {
+    match result {
+        Ok(_) => {
+            if verbose {
+                if let Some(msg) = success_msg {
+                    println!("✓ {}", msg);
+                }
+            }
+            Ok(())
+        }
+        Err(e) => Err(e),
+    }
+}
+
+/// 从命令获取命令名称（提取重复逻辑）
+fn get_command_name(command: &Commands) -> &'static str {
     match command {
-        // 列出插件
+        Commands::Get { .. } => "get",
+        Commands::Set { .. } => "set",
+        Commands::Unset { .. } => "unset",
+        Commands::List { .. } => "list",
+        Commands::Import { .. } => "import",
+        Commands::Export { .. } => "export",
+        Commands::Status => "status",
+        Commands::Doctor => "doctor",
+        Commands::Run { .. } => "run",
+        Commands::Template { .. } => "template",
+        Commands::Encrypt { .. } => "encrypt",
+        Commands::Decrypt { .. } => "decrypt",
+        Commands::SetEncrypt { .. } => "set-encrypt",
+        Commands::CheckSops => "check-sops",
+        Commands::Plugin { .. } => "plugin",
+        Commands::SystemSet { .. } => "system-set",
+        Commands::SystemUnset { .. } => "system-unset",
+    }
+}
+
+/// 执行命令前的插件钩子（提取重复逻辑）
+fn execute_pre_command_hooks(
+    command_name: &str,
+    plugin_manager: &PluginManager,
+    verbose: bool,
+) -> Result<(Vec<envcli::plugin::HookResult>, HashMap<String, String>)> {
+    let context = create_hook_context(command_name);
+    let results = execute_plugin_hooks(HookType::PreCommand, &context, plugin_manager)?;
+
+    // 检查是否被阻止
+    check_plugin_block(&results, verbose)?;
+
+    // 合并环境变量
+    let merged_env = merge_plugin_env(&results);
+
+    Ok((results, merged_env))
+}
+
+/// 执行命令后的插件钩子（提取重复逻辑）
+fn execute_post_command_hooks(
+    command_name: &str,
+    plugin_manager: &PluginManager,
+) -> Result<()> {
+    let context = create_hook_context(command_name);
+    let _ = execute_plugin_hooks(HookType::PostCommand, &context, plugin_manager)?;
+    Ok(())
+}
+
+/// 执行错误插件钩子（提取重复逻辑）
+fn execute_error_hooks(
+    command_name: &str,
+    error: &EnvError,
+    plugin_manager: &PluginManager,
+) -> Result<()> {
+    let mut context = create_hook_context(command_name);
+    context.error = Some(error.to_string());
+    let _ = execute_plugin_hooks(HookType::Error, &context, plugin_manager)?;
+    Ok(())
+}
+
+/// 处理 Run 命令的特殊逻辑
+fn handle_run_command(
+    env: &[String],
+    from_file: &Option<String>,
+    cmd: &[String],
+    store: &Store,
+    plugin_manager: &PluginManager,
+    _verbose: bool,
+) -> Result<()> {
+    // 执行 PreRun 钩子
+    let pre_run_context = create_hook_context("run");
+    let pre_run_results = execute_plugin_hooks(HookType::PreRun, &pre_run_context, plugin_manager)?;
+    let run_env = merge_plugin_env(&pre_run_results);
+
+    // 1. 解析临时环境变量
+    let mut temp_vars = utils::env_merge::EnvMerger::parse_temp_vars(env)?;
+
+    // 2. 从文件解析
+    if let Some(file) = from_file {
+        let file_vars = utils::env_merge::EnvMerger::parse_file(file)?;
+        temp_vars.extend(file_vars);
+    }
+
+    // 3. 合并所有环境变量
+    let mut merged_run_env = utils::env_merge::EnvMerger::merge_environment(store, &temp_vars)?;
+
+    // 4. 合并插件添加的环境变量
+    for (k, v) in &run_env {
+        merged_run_env.insert(k.clone(), v.clone());
+    }
+
+    // 5. 执行命令
+    let exit_code = utils::executor::CommandExecutor::exec_with_env(cmd, &merged_run_env)?;
+
+    // 6. 执行 PostRun 钩子
+    let post_run_context = create_hook_context("run");
+    let _ = execute_plugin_hooks(HookType::PostRun, &post_run_context, plugin_manager)?;
+
+    // 7. 退出码透传
+    std::process::exit(exit_code);
+}
+
+// ==================== 命令分组处理函数 ====================
+
+/// 处理读取类命令 (Get, List, Status, Export)
+fn handle_read_commands(
+    command: &Commands,
+    store: &Store,
+    merged_env: &HashMap<String, String>,
+    verbose: bool,
+) -> Result<()> {
+    match command {
+        Commands::Get { key } => {
+            // 检查是否有插件修改的环境变量
+            if let Some(value) = merged_env.get(key) {
+                println!("{}", value);
+                Ok(())
+            } else {
+                match store.get(key)? {
+                    Some(value) => {
+                        println!("{}", value);
+                        Ok(())
+                    }
+                    None => Err(EnvError::NotFound(key.clone())),
+                }
+            }
+        }
+
+        Commands::List { source, format } => {
+            let source_filter = cli::parse_list_source(source.as_deref())?;
+            let output_format = cli::parse_format(&format);
+            let mut vars = store.list(source_filter)?;
+
+            // 合并插件添加的环境变量
+            for (k, v) in merged_env {
+                vars.push(envcli::types::EnvVar::new(
+                    k.clone(),
+                    v.clone(),
+                    EnvSource::Local, // 插件添加的变量归入 Local 层
+                ));
+            }
+
+            match output_format {
+                OutputFormat::ENV => {
+                    for var in &vars {
+                        println!("{}={}", var.key, var.value);
+                    }
+                }
+                OutputFormat::JSON => {
+                    let json = serde_json::to_string_pretty(&vars)?;
+                    println!("{}", json);
+                }
+            }
+            Ok(())
+        }
+
+        Commands::Export { source, format } => {
+            let source_filter = cli::parse_list_source(source.as_deref())?;
+            let output_format = cli::parse_format(&format);
+            let content = store.export(source_filter.clone())?;
+
+            match output_format {
+                OutputFormat::ENV => println!("{}", content),
+                OutputFormat::JSON => {
+                    let vars = store.list(source_filter)?;
+                    let json = serde_json::to_string_pretty(&vars)?;
+                    println!("{}", json);
+                }
+            }
+            Ok(())
+        }
+
+        Commands::Status => show_status(store, verbose),
+
+        _ => Err(EnvError::InvalidArgument(
+            "非读取类命令".to_string(),
+        )),
+    }
+}
+
+/// 处理写入类命令 (Set, Unset, Import)
+fn handle_write_commands(
+    command: &Commands,
+    store: &Store,
+    merged_env: &HashMap<String, String>,
+    verbose: bool,
+) -> Result<()> {
+    match command {
+        Commands::Set { key, value } => {
+            // 应用插件修改
+            if let Some(plugin_value) = merged_env.get(key) {
+                store.set(key.clone(), plugin_value.clone())?;
+            } else {
+                store.set(key.clone(), value.clone())?;
+            }
+            Ok(())
+        }
+
+        Commands::Unset { key } => {
+            let deleted = store.unset(&key)?;
+            if verbose && deleted {
+                println!("✓ 已删除");
+            } else if !deleted {
+                return Err(EnvError::NotFound(key.clone()));
+            }
+            Ok(())
+        }
+
+        Commands::Import { file, target } => {
+            let target_source = cli::validate_writable_source(&target)?;
+            let count = store.import_file(&file, &target_source)?;
+            handle_result(Ok(()), verbose, Some(&format!("成功导入 {} 个变量", count)))
+        }
+
+        _ => Err(EnvError::InvalidArgument(
+            "非写入类命令".to_string(),
+        )),
+    }
+}
+
+/// 处理插件类命令
+fn handle_plugin_commands(
+    command: &PluginCommands,
+    verbose: bool,
+) -> Result<()> {
+    match command {
         PluginCommands::List { verbose: list_verbose, show_disabled } => {
             let manager = PluginManager::new()?;
-            let plugins = manager.list_plugins(show_disabled);
+            let plugins = manager.list_plugins(*show_disabled);
 
             if plugins.is_empty() {
                 println!("暂无插件");
@@ -717,7 +543,7 @@ fn run_plugin_command(command: PluginCommands, verbose: bool) -> Result<()> {
                 let status = if plugin_info.metadata.enabled { "✓" } else { "✗" };
                 println!("{} {} ({})", status, plugin_info.metadata.name, plugin_info.metadata.id);
 
-                if list_verbose {
+                if *list_verbose {
                     println!("  版本: {}", plugin_info.metadata.version);
                     if let Some(desc) = &plugin_info.metadata.description {
                         println!("  描述: {}", desc);
@@ -741,9 +567,9 @@ fn run_plugin_command(command: PluginCommands, verbose: bool) -> Result<()> {
                     println!();
                 }
             }
+            Ok(())
         }
 
-        // 查看插件详情
         PluginCommands::Show { plugin_id } => {
             let manager = PluginManager::new()?;
             let plugin_info = manager
@@ -795,9 +621,9 @@ fn run_plugin_command(command: PluginCommands, verbose: bool) -> Result<()> {
                     }
                 }
             }
+            Ok(())
         }
 
-        // 启用插件
         PluginCommands::Enable { plugin_id } => {
             let mut manager = PluginManager::new()?;
             manager
@@ -807,9 +633,9 @@ fn run_plugin_command(command: PluginCommands, verbose: bool) -> Result<()> {
             if verbose {
                 println!("✓ 已启用插件: {}", plugin_id);
             }
+            Ok(())
         }
 
-        // 禁用插件
         PluginCommands::Disable { plugin_id } => {
             let mut manager = PluginManager::new()?;
             manager
@@ -819,14 +645,13 @@ fn run_plugin_command(command: PluginCommands, verbose: bool) -> Result<()> {
             if verbose {
                 println!("✓ 已禁用插件: {}", plugin_id);
             }
+            Ok(())
         }
 
-        // 加载插件
         PluginCommands::Load { path, config: _ } => {
             let mut manager = PluginManager::new()?;
             let path_buf = PathBuf::from(&path);
 
-            // 加载插件
             manager
                 .load_from_path(&path_buf)
                 .map_err(|e| EnvError::PluginLoadFailed(e.to_string()))?;
@@ -834,9 +659,9 @@ fn run_plugin_command(command: PluginCommands, verbose: bool) -> Result<()> {
             if verbose {
                 println!("✓ 已加载插件: {}", path);
             }
+            Ok(())
         }
 
-        // 卸载插件
         PluginCommands::Unload { plugin_id } => {
             let mut manager = PluginManager::new()?;
             manager
@@ -846,9 +671,9 @@ fn run_plugin_command(command: PluginCommands, verbose: bool) -> Result<()> {
             if verbose {
                 println!("✓ 已卸载插件: {}", plugin_id);
             }
+            Ok(())
         }
 
-        // 热重载插件
         PluginCommands::Reload { plugin_id } => {
             let mut manager = PluginManager::new()?;
             let new_id = manager
@@ -856,21 +681,20 @@ fn run_plugin_command(command: PluginCommands, verbose: bool) -> Result<()> {
                 .map_err(|e| EnvError::PluginExecutionFailed(e.to_string()))?;
 
             if verbose {
-                if new_id == plugin_id {
+                if new_id == *plugin_id {
                     println!("✓ 已重载插件: {}", plugin_id);
                 } else {
                     println!("✓ 已重载插件: {} -> {}", plugin_id, new_id);
                 }
             }
+            Ok(())
         }
 
-        // 查看插件状态
         PluginCommands::Status { plugin_id } => {
             let manager = PluginManager::new()?;
 
             match plugin_id {
                 Some(id) => {
-                    // 显示单个插件状态
                     let info = manager
                         .get_plugin_info(&id)
                         .ok_or_else(|| EnvError::PluginNotFound(id.clone()))?;
@@ -882,9 +706,9 @@ fn run_plugin_command(command: PluginCommands, verbose: bool) -> Result<()> {
                     let stats = manager.get_stats();
                     println!("执行次数: {}", stats.total_executions);
                     println!("错误次数: {}", stats.total_errors);
+                    Ok(())
                 }
                 None => {
-                    // 显示所有插件状态统计
                     let stats = manager.get_stats();
                     let plugins = manager.list_plugins(true);
 
@@ -897,20 +721,150 @@ fn run_plugin_command(command: PluginCommands, verbose: bool) -> Result<()> {
                     if verbose && !plugins.is_empty() {
                         println!("\n详细状态:");
                         for plugin in plugins {
-                            let status = if plugin.metadata.enabled { "✓" } else { "✗" };
-                            let loaded = if manager.is_loaded(&plugin.metadata.id) {
-                                "已加载"
-                            } else {
-                                "未加载"
-                            };
-                            println!("  {} {} - {} ({})", status, plugin.metadata.name, loaded, plugin.metadata.id);
+                            println!(
+                                "  {}: {} ({}), {}",
+                                plugin.metadata.name,
+                                if plugin.metadata.enabled { "启用" } else { "禁用" },
+                                if manager.is_loaded(&plugin.metadata.id) {
+                                    "已加载"
+                                } else {
+                                    "未加载"
+                                },
+                                plugin.metadata.version
+                            );
                         }
                     }
+                    Ok(())
                 }
             }
         }
 
-        // 测试插件钩子
+        PluginCommands::Config(config_cmd) => match config_cmd {
+            // 设置配置（简化：仅显示提示）
+            PluginConfigCommands::Set { plugin_id, key, value } => {
+                if verbose {
+                    println!("⚠️  配置管理功能暂未完全实现");
+                    println!("   插件: {}, 配置: {} = {}", plugin_id, key, value);
+                }
+                Ok(())
+            }
+
+            // 获取配置（简化：显示提示）
+            PluginConfigCommands::Get { plugin_id, key } => {
+                if verbose {
+                    println!("⚠️  配置管理功能暂未完全实现");
+                    println!("   插件: {}, 配置项: {:?}", plugin_id, key);
+                }
+                Ok(())
+            }
+
+            // 重置配置（简化：显示提示）
+            PluginConfigCommands::Reset { plugin_id } => {
+                if verbose {
+                    println!("⚠️  配置管理功能暂未完全实现");
+                    println!("   插件: {}", plugin_id);
+                }
+                Ok(())
+            }
+
+            // 导出配置（简化：显示提示）
+            PluginConfigCommands::Export => {
+                println!("⚠️  配置管理功能暂未完全实现");
+                Ok(())
+            }
+
+            // 导入配置（简化：显示提示）
+            PluginConfigCommands::Import { file } => {
+                if verbose {
+                    println!("⚠️  配置管理功能暂未完全实现");
+                    println!("   文件: {}", file);
+                }
+                Ok(())
+            }
+        },
+
+        PluginCommands::GenerateKeyPair => {
+            match PluginManager::generate_key_pair() {
+                Ok((private_key, public_key)) => {
+                    println!("✓ 密钥对生成成功");
+                    println!();
+                    println!("私钥 (请安全保存):");
+                    println!("{}", private_key);
+                    println!();
+                    println!("公钥:");
+                    println!("{}", public_key);
+                    println!();
+                    println!("指纹: {}", PluginManager::fingerprint(&public_key));
+                    Ok(())
+                }
+                Err(e) => Err(EnvError::PluginExecutionFailed(e.to_string())),
+            }
+        }
+
+        PluginCommands::Sign { plugin_id, key, algorithm, output } => {
+            let manager = PluginManager::new()?;
+
+            // 解析算法
+            let sig_algorithm = match algorithm.as_str() {
+                "Ed25519" => SignatureAlgorithm::Ed25519,
+                _ => return Err(EnvError::PluginExecutionFailed("不支持的签名算法，仅支持 Ed25519".to_string())),
+            };
+
+            match manager.sign_plugin(&plugin_id, &key, sig_algorithm) {
+                Ok(signature) => {
+                    let signature_json = serde_json::to_string_pretty(&signature)
+                        .map_err(|e| EnvError::PluginExecutionFailed(e.to_string()))?;
+
+                    if let Some(output_path) = output {
+                        std::fs::write(&output_path, &signature_json)
+                            .map_err(EnvError::Io)?;
+                        println!("✓ 签名已保存到 {}", output_path);
+                    } else {
+                        println!("✓ 签名生成成功:");
+                        println!("{}", signature_json);
+                    }
+                    Ok(())
+                }
+                Err(e) => Err(EnvError::PluginExecutionFailed(e.to_string())),
+            }
+        }
+
+        PluginCommands::Verify { plugin_id, trust_unsigned } => {
+            let manager = PluginManager::new()?;
+
+            match manager.verify_plugin_signature(&plugin_id, *trust_unsigned) {
+                Ok(()) => {
+                    println!("✓ 插件 {} 签名验证通过", plugin_id);
+                    Ok(())
+                }
+                Err(e) => {
+                    println!("✗ 插件 {} 签名验证失败: {}", plugin_id, e);
+                    Err(EnvError::PluginExecutionFailed(e.to_string()))
+                }
+            }
+        }
+
+        PluginCommands::VerifyAll { trust_unsigned } => {
+            let manager = PluginManager::new()?;
+
+            match manager.verify_all_signatures(*trust_unsigned) {
+                Ok(()) => {
+                    println!("✓ 所有插件签名验证通过");
+                    Ok(())
+                }
+                Err(e) => {
+                    println!("✗ 签名验证失败: {}", e);
+                    Err(EnvError::PluginExecutionFailed(e.to_string()))
+                }
+            }
+        }
+
+        PluginCommands::Fingerprint { public_key } => {
+            let fingerprint = PluginManager::fingerprint(&public_key);
+            println!("公钥指纹: {}", fingerprint);
+            Ok(())
+        }
+
         PluginCommands::Test { plugin_id, hook } => {
             let manager = PluginManager::new()?;
 
@@ -976,49 +930,9 @@ fn run_plugin_command(command: PluginCommands, verbose: bool) -> Result<()> {
                     }
                 }
             }
+            Ok(())
         }
 
-        // 配置管理子命令（简化版：仅占位实现）
-        PluginCommands::Config(config_cmd) => match config_cmd {
-            // 设置配置（简化：仅显示提示）
-            PluginConfigCommands::Set { plugin_id, key, value } => {
-                if verbose {
-                    println!("⚠️  配置管理功能暂未完全实现");
-                    println!("   插件: {}, 配置: {} = {}", plugin_id, key, value);
-                }
-            }
-
-            // 获取配置（简化：显示提示）
-            PluginConfigCommands::Get { plugin_id, key } => {
-                if verbose {
-                    println!("⚠️  配置管理功能暂未完全实现");
-                    println!("   插件: {}, 配置项: {:?}", plugin_id, key);
-                }
-            }
-
-            // 重置配置（简化：显示提示）
-            PluginConfigCommands::Reset { plugin_id } => {
-                if verbose {
-                    println!("⚠️  配置管理功能暂未完全实现");
-                    println!("   插件: {}", plugin_id);
-                }
-            }
-
-            // 导出配置（简化：显示提示）
-            PluginConfigCommands::Export => {
-                println!("⚠️  配置管理功能暂未完全实现");
-            }
-
-            // 导入配置（简化：显示提示）
-            PluginConfigCommands::Import { file } => {
-                if verbose {
-                    println!("⚠️  配置管理功能暂未完全实现");
-                    println!("   文件: {}", file);
-                }
-            }
-        },
-
-        // 检查插件依赖
         PluginCommands::CheckDeps { plugin_id } => {
             let manager = PluginManager::new()?;
 
@@ -1040,18 +954,24 @@ fn run_plugin_command(command: PluginCommands, verbose: bool) -> Result<()> {
                     if satisfied.is_empty() && missing.is_empty() {
                         println!("  - 无依赖");
                     }
+                    Ok(())
                 }
                 None => {
                     // 检查所有插件
                     match manager.validate_all_dependencies() {
-                        Ok(()) => println!("✓ 所有插件依赖关系有效"),
-                        Err(e) => println!("✗ 依赖验证失败: {}", e),
+                        Ok(()) => {
+                            println!("✓ 所有插件依赖关系有效");
+                            Ok(())
+                        }
+                        Err(e) => {
+                            println!("✗ 依赖验证失败: {}", e);
+                            Ok(())
+                        }
                     }
                 }
             }
         }
 
-        // 加载插件及其依赖
         PluginCommands::LoadDeps { paths } => {
             let mut manager = PluginManager::new()?;
 
@@ -1064,93 +984,281 @@ fn run_plugin_command(command: PluginCommands, verbose: bool) -> Result<()> {
                     if verbose {
                         println!("加载顺序: {}", loaded.join(" -> "));
                     }
+                    Ok(())
                 }
-                Err(e) => return Err(EnvError::PluginExecutionFailed(e.to_string())),
+                Err(e) => Err(EnvError::PluginExecutionFailed(e.to_string())),
             }
-        }
-
-        // 生成密钥对
-        PluginCommands::GenerateKeyPair => {
-            match PluginManager::generate_key_pair() {
-                Ok((private_key, public_key)) => {
-                    println!("✓ 密钥对生成成功");
-                    println!();
-                    println!("私钥 (请安全保存):");
-                    println!("{}", private_key);
-                    println!();
-                    println!("公钥:");
-                    println!("{}", public_key);
-                    println!();
-                    println!("指纹: {}", PluginManager::fingerprint(&public_key));
-                }
-                Err(e) => return Err(EnvError::PluginExecutionFailed(e.to_string())),
-            }
-        }
-
-        // 为插件生成签名
-        PluginCommands::Sign { plugin_id, key, algorithm, output } => {
-            let manager = PluginManager::new()?;
-
-            // 解析算法
-            let sig_algorithm = match algorithm.as_str() {
-                "Ed25519" => SignatureAlgorithm::Ed25519,
-                _ => return Err(EnvError::PluginExecutionFailed("不支持的签名算法，仅支持 Ed25519".to_string())),
-            };
-
-            match manager.sign_plugin(&plugin_id, &key, sig_algorithm) {
-                Ok(signature) => {
-                    let signature_json = serde_json::to_string_pretty(&signature)
-                        .map_err(|e| EnvError::PluginExecutionFailed(e.to_string()))?;
-
-                    if let Some(output_path) = output {
-                        std::fs::write(&output_path, &signature_json)
-                            .map_err(EnvError::Io)?;
-                        println!("✓ 签名已保存到 {}", output_path);
-                    } else {
-                        println!("✓ 签名生成成功:");
-                        println!("{}", signature_json);
-                    }
-                }
-                Err(e) => return Err(EnvError::PluginExecutionFailed(e.to_string())),
-            }
-        }
-
-        // 验证插件签名
-        PluginCommands::Verify { plugin_id, trust_unsigned } => {
-            let manager = PluginManager::new()?;
-
-            match manager.verify_plugin_signature(&plugin_id, trust_unsigned) {
-                Ok(()) => {
-                    println!("✓ 插件 {} 签名验证通过", plugin_id);
-                }
-                Err(e) => {
-                    println!("✗ 插件 {} 签名验证失败: {}", plugin_id, e);
-                    return Err(EnvError::PluginExecutionFailed(e.to_string()));
-                }
-            }
-        }
-
-        // 验证所有插件签名
-        PluginCommands::VerifyAll { trust_unsigned } => {
-            let manager = PluginManager::new()?;
-
-            match manager.verify_all_signatures(trust_unsigned) {
-                Ok(()) => {
-                    println!("✓ 所有插件签名验证通过");
-                }
-                Err(e) => {
-                    println!("✗ 签名验证失败: {}", e);
-                    return Err(EnvError::PluginExecutionFailed(e.to_string()));
-                }
-            }
-        }
-
-        // 显示公钥指纹
-        PluginCommands::Fingerprint { public_key } => {
-            let fingerprint = PluginManager::fingerprint(&public_key);
-            println!("公钥指纹: {}", fingerprint);
         }
     }
+}
 
-    Ok(())
+/// 处理加密类命令 (Encrypt, Decrypt, SetEncrypt, CheckSops)
+fn handle_encrypt_commands(
+    command: &Commands,
+    store: &Store,
+    verbose: bool,
+) -> Result<()> {
+    match command {
+        Commands::Encrypt { key, value, target } => {
+            let target_source = cli::validate_writable_source(&target)?;
+
+            // 检查 SOPS
+            store.check_sops()?;
+
+            if target_source == EnvSource::Local {
+                store.set_encrypted(key.clone(), value.to_string())?;
+                if verbose {
+                    println!("✓ 已加密并存储变量: {}", key);
+                }
+            } else {
+                return Err(EnvError::PermissionDenied(
+                    "加密存储目前只支持 local 层".to_string(),
+                ));
+            }
+            Ok(())
+        }
+
+        Commands::Decrypt { key, source } => {
+            let encryptor = SopsEncryptor::new();
+            let value = if let Some(source_str) = source {
+                let source_filter = cli::parse_list_source(Some(&source_str))?;
+                let vars = store.list_encrypted(source_filter)?;
+                if let Some(var) = vars.iter().find(|v| v.key == *key) {
+                    if var.is_encrypted() {
+                        encryptor.decrypt(&var.value)?
+                    } else {
+                        var.value.clone()
+                    }
+                } else {
+                    return Err(EnvError::NotFound(key.clone()));
+                }
+            } else {
+                match store.get_decrypted(&key)? {
+                    Some(v) => v,
+                    None => return Err(EnvError::NotFound(key.clone())),
+                }
+            };
+
+            println!("{}", value);
+            Ok(())
+        }
+
+        Commands::SetEncrypt { key, value, encrypt } => {
+            if *encrypt {
+                store.check_sops()?;
+                store.set_encrypted(key.clone(), value.to_string())?;
+                if verbose {
+                    println!("✓ 已加密并存储变量: {}", key);
+                }
+            } else {
+                store.set(key.to_string(), value.to_string())?;
+                if verbose {
+                    println!("✓ 已存储变量");
+                }
+            }
+            Ok(())
+        }
+
+        Commands::CheckSops => {
+            store.check_sops()?;
+            let version = SopsEncryptor::version()?;
+            println!("✓ SOPS 可用");
+            println!("版本: {}", version);
+            Ok(())
+        }
+
+        _ => Err(EnvError::InvalidArgument(
+            "非加密类命令".to_string(),
+        )),
+    }
+}
+
+/// 处理系统类命令 (SystemSet, SystemUnset, Doctor, Run)
+fn handle_system_commands(
+    command: &Commands,
+    store: &Store,
+    plugin_manager: &PluginManager,
+    _merged_env: &HashMap<String, String>,
+    verbose: bool,
+) -> Result<()> {
+    match command {
+        Commands::SystemSet { key, value, scope } => {
+            validate_scope(&scope)?;
+            store.set_system(key.clone(), value.clone(), scope)?;
+            Ok(())
+        }
+
+        Commands::SystemUnset { key, scope } => {
+            validate_scope(&scope)?;
+            store.unset_system(key.clone(), scope)?;
+            Ok(())
+        }
+
+        Commands::Doctor => diagnose(store, verbose),
+
+        Commands::Run { env, from_file, command: cmd } => {
+            // Run 命令需要特殊处理，因为它会直接退出进程
+            handle_run_command(&env, &from_file, &cmd, store, plugin_manager, verbose)
+        }
+
+        _ => Err(EnvError::InvalidArgument(
+            "非系统类命令".to_string(),
+        )),
+    }
+}
+
+/// 处理模板类命令
+fn handle_template_commands(
+    command: &TemplateCommands,
+    verbose: bool,
+) -> Result<()> {
+    let engine = template::TemplateEngine::new()?;
+
+    match command {
+        TemplateCommands::Create { name, vars, inherits } => {
+            let template = engine.create_template(&name, &vars, &inherits)?;
+
+            if verbose {
+                println!("✓ 已创建模板: {}", template.name);
+                println!("  变量: {:?}", template.variables);
+                if !template.inherits.is_empty() {
+                    println!("  继承: {:?}", template.inherits);
+                }
+            }
+            Ok(())
+        }
+
+        TemplateCommands::Show { name } => {
+            let template = engine.get_template(&name)?;
+
+            println!("模板名称: {}", template.name);
+            println!("内容:\n{}", template.content);
+
+            if !template.variables.is_empty() {
+                println!("\n必需变量:");
+                for var in &template.variables {
+                    if var.required {
+                        print!("  {}", var.name);
+                        if let Some(default) = &var.default {
+                            print!(" (默认: {})", default);
+                        }
+                        println!();
+                    }
+                }
+            }
+
+            if !template.inherits.is_empty() {
+                println!("\n继承模板: {:?}", template.inherits);
+            }
+
+            Ok(())
+        }
+
+        TemplateCommands::List { verbose: list_verbose } => {
+            let templates = engine.list_templates()?;
+
+            if templates.is_empty() {
+                println!("暂无模板");
+                return Ok(());
+            }
+
+            for template in templates {
+                println!("{}", template.name);
+
+                if *list_verbose {
+                    // 显示变量详情
+                    for var in &template.variables {
+                        let required = if var.required { "必需" } else { "可选" };
+                        match &var.default {
+                            Some(default) => {
+                                println!("  {} = {} ({})", var.name, default, required)
+                            }
+                            None => println!("  {} ({})", var.name, required),
+                        }
+                    }
+
+                    // 显示继承关系
+                    if !template.inherits.is_empty() {
+                        println!("  继承: {}", template.inherits.join(", "));
+                    }
+                    println!();
+                }
+            }
+            Ok(())
+        }
+
+        TemplateCommands::Render { name, var, interactive, output } => {
+            // 解析变量参数
+            let mut variables = HashMap::new();
+            for v in var {
+                if let Some(pos) = v.find('=') {
+                    let key = v[..pos].to_string();
+                    let value = v[pos + 1..].to_string();
+                    variables.insert(key, value);
+                }
+            }
+
+            // 交互式模式：检查缺失变量
+            if *interactive {
+                let template = engine.get_template(&name)?;
+                for var_def in &template.variables {
+                    if !variables.contains_key(&var_def.name) {
+                        if var_def.required {
+                            println!("请输入必需变量 {}: ", var_def.name);
+                            let mut input = String::new();
+                            std::io::stdin().read_line(&mut input).map_err(|e| {
+                                EnvError::Io(std::io::Error::other(e))
+                            })?;
+                            variables.insert(var_def.name.clone(), input.trim().to_string());
+                        } else if let Some(default) = &var_def.default {
+                            println!("变量 {} (默认: {}): ", var_def.name, default);
+                            let mut input = String::new();
+                            std::io::stdin().read_line(&mut input).map_err(|e| {
+                                EnvError::Io(std::io::Error::other(e))
+                            })?;
+                            let value = input.trim();
+                            if !value.is_empty() {
+                                variables.insert(var_def.name.clone(), value.to_string());
+                            } else {
+                                variables.insert(var_def.name.clone(), default.clone());
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 渲染模板
+            let result = engine.render_template(&name, &variables)?;
+
+            // 输出结果
+            match output {
+                Some(file_path) => {
+                    // 写入文件
+                    let path = std::path::Path::new(&file_path);
+                    utils::paths::write_file_safe(path, &result)?;
+                    if verbose {
+                        println!("✓ 已渲染并保存到: {}", file_path);
+                    }
+                }
+                None => {
+                    // 输出到 stdout
+                    println!("{}", result);
+                }
+            }
+            Ok(())
+        }
+
+        TemplateCommands::Delete { name } => {
+            let deleted = engine.delete_template(&name)?;
+
+            if deleted {
+                if verbose {
+                    println!("✓ 已删除模板: {}", name);
+                }
+                Ok(())
+            } else {
+                return Err(EnvError::TemplateNotFound(name.to_string()));
+            }
+        }
+    }
 }
