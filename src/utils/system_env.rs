@@ -7,6 +7,7 @@
 use crate::error::{EnvError, Result};
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::path::PathBuf;
+#[cfg(target_os = "windows")]
 use std::process::Command;
 
 /// 系统环境变量写入器
@@ -41,7 +42,10 @@ impl SystemEnvWriter {
     /// # 注意
     /// 仅 Windows 支持机器级变量
     /// Unix/Linux/macOS 会返回错误
-    pub fn set_machine_var(key: &str, value: &str) -> Result<()> {
+    pub fn set_machine_var(
+        #[cfg_attr(not(target_os = "windows"), allow(unused_variables))] key: &str,
+        #[cfg_attr(not(target_os = "windows"), allow(unused_variables))] value: &str,
+    ) -> Result<()> {
         #[cfg(target_os = "windows")]
         {
             Self::set_machine_var_windows(key, value)
@@ -266,10 +270,7 @@ impl SystemEnvWriter {
         use std::io::Write;
 
         // 读取现有内容
-        let content = match read_to_string(config_file) {
-            Ok(c) => c,
-            Err(_) => String::new(),
-        };
+        let content = read_to_string(config_file).unwrap_or_default();
 
         // 检查是否已存在该变量
         let export_line = format!("export {}={}", key, value);

@@ -380,7 +380,9 @@ mod comprehensive_tests {
     #[test]
     fn test_cross_platform_machine_level_support() {
         // TDD: 机器级变量平台差异
+        #[cfg_attr(not(target_os = "windows"), allow(unused_variables))]
         let key = "MACHINE_VAR";
+        #[cfg_attr(not(target_os = "windows"), allow(unused_variables))]
         let value = "machine_value";
         let scope = "machine";
 
@@ -399,7 +401,6 @@ mod comprehensive_tests {
         {
             // Unix 不支持机器级，应该返回错误
             // 这个测试验证了预期行为
-            assert!(true);
         }
     }
 
@@ -440,7 +441,9 @@ mod comprehensive_tests {
     #[test]
     fn test_full_workflow_machine() {
         // TDD: 完整机器级工作流
+        #[cfg_attr(not(target_os = "windows"), allow(unused_variables))]
         let key = "MACHINE_VAR";
+        #[cfg_attr(not(target_os = "windows"), allow(unused_variables))]
         let value = "machine_value";
         let scope = "machine";
 
@@ -491,6 +494,7 @@ mod comprehensive_tests {
     #[test]
     fn test_large_value_performance() {
         // TDD: 大值性能
+        #[cfg_attr(not(target_os = "windows"), allow(unused_variables))]
         let key = "LARGE_VAR";
         let value = "X".repeat(10000);
 
@@ -687,7 +691,9 @@ mod comprehensive_tests {
     fn test_all_platforms_covered() {
         // TDD: 验证所有平台都被考虑
         // 这个测试验证了跨平台设计
+        #[cfg_attr(not(target_os = "windows"), allow(unused_variables))]
         let key = "TEST_VAR";
+        #[cfg_attr(not(target_os = "windows"), allow(unused_variables))]
         let value = "test_value";
 
         // 所有平台都支持用户级（无需额外断言）
@@ -751,7 +757,9 @@ mod performance_tests {
         let start = Instant::now();
 
         for _ in 0..100 {
+            #[cfg_attr(not(target_os = "windows"), allow(unused_variables))]
             let key = "TEST\"VAR";
+            #[cfg_attr(not(target_os = "windows"), allow(unused_variables))]
             let value = "test \"value\" with \"quotes\"";
 
             #[cfg(target_os = "windows")]
@@ -826,7 +834,9 @@ mod integration_tests {
     #[test]
     fn test_complete_machine_workflow() {
         // TDD: 完整机器工作流集成测试
+        #[cfg_attr(not(target_os = "windows"), allow(unused_variables))]
         let key = "MACHINE_INTEGRATION_VAR";
+        #[cfg_attr(not(target_os = "windows"), allow(unused_variables))]
         let value = "machine_integration_value";
         let scope = "machine";
 

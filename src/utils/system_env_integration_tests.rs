@@ -5,6 +5,7 @@
 #[cfg(test)]
 mod windows_registry_tests {
     use super::super::paths::get_system_env;
+    #[cfg(target_os = "windows")]
     use std::collections::HashMap;
 
     #[test]
