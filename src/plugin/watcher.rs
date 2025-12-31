@@ -624,10 +624,10 @@ impl PluginWatcher {
         {
             let mut timer = debounce_timer.lock().unwrap();
             let now = Instant::now();
-            if let Some(last_time) = *timer {
-                if now.duration_since(last_time) < Duration::from_millis(config.debounce_ms) {
-                    return None; // 还在防抖期内
-                }
+            if let Some(last_time) = *timer
+                && now.duration_since(last_time) < Duration::from_millis(config.debounce_ms)
+            {
+                return None; // 还在防抖期内
             }
             *timer = Some(now);
         }
@@ -693,16 +693,16 @@ impl PluginWatcher {
         // 检查是否已经在处理中
         {
             let active = active_reloads.lock().unwrap();
-            if let Some(last_time) = active.get(plugin_id) {
-                if Instant::now().duration_since(*last_time) < Duration::from_millis(100) {
-                    return ReloadResult {
-                        success: false,
-                        plugin_id: plugin_id.to_string(),
-                        new_plugin_id: None,
-                        error: Some("重载正在进行中".to_string()),
-                        retry_count: 0,
-                    };
-                }
+            if let Some(last_time) = active.get(plugin_id)
+                && Instant::now().duration_since(*last_time) < Duration::from_millis(100)
+            {
+                return ReloadResult {
+                    success: false,
+                    plugin_id: plugin_id.to_string(),
+                    new_plugin_id: None,
+                    error: Some("重载正在进行中".to_string()),
+                    retry_count: 0,
+                };
             }
         }
 

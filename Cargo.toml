@@ -20,6 +20,9 @@ ring = "0.17"              # 密码学库（签名验证）
 hex = "0.4"                # 十六进制编码
 sha2 = "0.10"              # SHA-256哈希（重放防护）
 notify = { version = "6.1", optional = true }  # 文件变更监听（自动热重载）
+
+# Windows-specific dependencies
+[target.'cfg(windows)'.dependencies]
 winreg = "0.52"  # Windows 注册表访问
 
 [dev-dependencies]
