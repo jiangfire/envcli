@@ -72,12 +72,12 @@ fn run_command(command: &Commands, store: Store, verbose: bool) -> Result<()> {
     let result = match &command {
         // 读取类命令
         Commands::Get { .. } | Commands::List { .. } | Commands::Export { .. } | Commands::Status => {
-            handle_read_commands(&command, &store, &merged_env, verbose)
+            handle_read_commands(command, &store, &merged_env, verbose)
         }
 
         // 写入类命令
         Commands::Set { .. } | Commands::Unset { .. } | Commands::Import { .. } => {
-            handle_write_commands(&command, &store, &merged_env, verbose)
+            handle_write_commands(command, &store, &merged_env, verbose)
         }
 
         // 插件类命令
@@ -87,12 +87,12 @@ fn run_command(command: &Commands, store: Store, verbose: bool) -> Result<()> {
 
         // 加密类命令
         Commands::Encrypt { .. } | Commands::Decrypt { .. } | Commands::SetEncrypt { .. } | Commands::CheckSops => {
-            handle_encrypt_commands(&command, &store, verbose)
+            handle_encrypt_commands(command, &store, verbose)
         }
 
         // 系统类命令
         Commands::SystemSet { .. } | Commands::SystemUnset { .. } | Commands::Doctor | Commands::Run { .. } => {
-            handle_system_commands(&command, &store, &plugin_manager, &merged_env, verbose)
+            handle_system_commands(command, &store, &plugin_manager, &merged_env, verbose)
         }
 
         // 配置类命令
@@ -112,11 +112,11 @@ fn run_command(command: &Commands, store: Store, verbose: bool) -> Result<()> {
     };
 
     // 执行命令后的钩子
-    let _ = execute_post_command_hooks(command_name, &plugin_manager)?;
+    execute_post_command_hooks(command_name, &plugin_manager)?;
 
     // 如果命令执行失败，执行错误钩子
     if let Err(ref e) = result {
-        let _ = execute_error_hooks(command_name, e, &plugin_manager)?;
+        execute_error_hooks(command_name, e, &plugin_manager)?;
     }
 
     result
@@ -491,17 +491,17 @@ fn validate_config(verbose: bool) -> Result<()> {
                 println!("   📋 变量列表:");
                 for line in content.lines() {
                     let trimmed = line.trim();
-                    if !trimmed.is_empty() && !trimmed.starts_with('#') && trimmed.contains('=') {
-                        if let Some(eq_pos) = trimmed.find('=') {
-                            let key = trimmed[..eq_pos].trim();
-                            let value = trimmed[eq_pos + 1..].trim();
-                            let display_value = if value.len() > 30 {
-                                format!("{}...", &value[..27])
-                            } else {
-                                value.to_string()
-                            };
-                            println!("      {} = {}", key, display_value);
-                        }
+                    if !trimmed.is_empty() && !trimmed.starts_with('#') && trimmed.contains('=')
+                        && let Some(eq_pos) = trimmed.find('=')
+                    {
+                        let key = trimmed[..eq_pos].trim();
+                        let value = trimmed[eq_pos + 1..].trim();
+                        let display_value = if value.len() > 30 {
+                            format!("{}...", &value[..27])
+                        } else {
+                            value.to_string()
+                        };
+                        println!("      {} = {}", key, display_value);
                     }
                 }
             }
@@ -681,10 +681,8 @@ fn create_hook_context(command: &str) -> HookContext<'_> {
 fn handle_result<T>(result: Result<T>, verbose: bool, success_msg: Option<&str>) -> Result<()> {
     match result {
         Ok(_) => {
-            if verbose {
-                if let Some(msg) = success_msg {
-                    println!("✓ {}", msg);
-                }
+            if verbose && let Some(msg) = success_msg {
+                println!("✓ {}", msg);
             }
             Ok(())
         }
@@ -827,7 +825,7 @@ fn handle_read_commands(
 
         Commands::List { source, format } => {
             let source_filter = cli::parse_list_source(source.as_deref())?;
-            let output_format = cli::parse_format(&format);
+            let output_format = cli::parse_format(format);
             let mut vars = store.list(source_filter)?;
 
             // 合并插件添加的环境变量
@@ -855,7 +853,7 @@ fn handle_read_commands(
 
         Commands::Export { source, format } => {
             let source_filter = cli::parse_list_source(source.as_deref())?;
-            let output_format = cli::parse_format(&format);
+            let output_format = cli::parse_format(format);
             let content = store.export(source_filter.clone())?;
 
             match output_format {
@@ -896,7 +894,7 @@ fn handle_write_commands(
         }
 
         Commands::Unset { key } => {
-            let deleted = store.unset(&key)?;
+            let deleted = store.unset(key)?;
             if verbose && deleted {
                 println!("✓ 已删除");
             } else if !deleted {
@@ -906,8 +904,8 @@ fn handle_write_commands(
         }
 
         Commands::Import { file, target } => {
-            let target_source = cli::validate_writable_source(&target)?;
-            let count = store.import_file(&file, &target_source)?;
+            let target_source = cli::validate_writable_source(target)?;
+            let count = store.import_file(file, &target_source)?;
             handle_result(Ok(()), verbose, Some(&format!("成功导入 {} 个变量", count)))
         }
 
@@ -966,7 +964,7 @@ fn handle_plugin_commands(
         PluginCommands::Show { plugin_id } => {
             let manager = PluginManager::new()?;
             let plugin_info = manager
-                .get_plugin_info(&plugin_id)
+                .get_plugin_info(plugin_id)
                 .ok_or_else(|| EnvError::PluginNotFound(plugin_id.clone()))?;
 
             println!("插件 ID: {}", plugin_info.metadata.id);
@@ -1020,7 +1018,7 @@ fn handle_plugin_commands(
         PluginCommands::Enable { plugin_id } => {
             let mut manager = PluginManager::new()?;
             manager
-                .enable_plugin(&plugin_id)
+                .enable_plugin(plugin_id)
                 .map_err(|e| EnvError::PluginExecutionFailed(e.to_string()))?;
 
             if verbose {
@@ -1032,7 +1030,7 @@ fn handle_plugin_commands(
         PluginCommands::Disable { plugin_id } => {
             let mut manager = PluginManager::new()?;
             manager
-                .disable_plugin(&plugin_id)
+                .disable_plugin(plugin_id)
                 .map_err(|e| EnvError::PluginExecutionFailed(e.to_string()))?;
 
             if verbose {
@@ -1058,7 +1056,7 @@ fn handle_plugin_commands(
         PluginCommands::Unload { plugin_id } => {
             let mut manager = PluginManager::new()?;
             manager
-                .unload_plugin(&plugin_id)
+                .unload_plugin(plugin_id)
                 .map_err(|e| EnvError::PluginExecutionFailed(e.to_string()))?;
 
             if verbose {
@@ -1070,7 +1068,7 @@ fn handle_plugin_commands(
         PluginCommands::Reload { plugin_id } => {
             let mut manager = PluginManager::new()?;
             let new_id = manager
-                .reload(&plugin_id)
+                .reload(plugin_id)
                 .map_err(|e| EnvError::PluginExecutionFailed(e.to_string()))?;
 
             if verbose {
@@ -1089,12 +1087,12 @@ fn handle_plugin_commands(
             match plugin_id {
                 Some(id) => {
                     let info = manager
-                        .get_plugin_info(&id)
+                        .get_plugin_info(id)
                         .ok_or_else(|| EnvError::PluginNotFound(id.clone()))?;
 
                     println!("插件: {}", info.metadata.name);
                     println!("状态: {}", if info.metadata.enabled { "已启用" } else { "已禁用" });
-                    println!("已加载: {}", manager.is_loaded(&id));
+                    println!("已加载: {}", manager.is_loaded(id));
 
                     let stats = manager.get_stats();
                     println!("执行次数: {}", stats.total_executions);
@@ -1203,13 +1201,13 @@ fn handle_plugin_commands(
                 _ => return Err(EnvError::PluginExecutionFailed("不支持的签名算法，仅支持 Ed25519".to_string())),
             };
 
-            match manager.sign_plugin(&plugin_id, &key, sig_algorithm) {
+            match manager.sign_plugin(plugin_id, key, sig_algorithm) {
                 Ok(signature) => {
                     let signature_json = serde_json::to_string_pretty(&signature)
                         .map_err(|e| EnvError::PluginExecutionFailed(e.to_string()))?;
 
                     if let Some(output_path) = output {
-                        std::fs::write(&output_path, &signature_json)
+                        std::fs::write(output_path, &signature_json)
                             .map_err(EnvError::Io)?;
                         println!("✓ 签名已保存到 {}", output_path);
                     } else {
@@ -1225,7 +1223,7 @@ fn handle_plugin_commands(
         PluginCommands::Verify { plugin_id, trust_unsigned } => {
             let manager = PluginManager::new()?;
 
-            match manager.verify_plugin_signature(&plugin_id, *trust_unsigned) {
+            match manager.verify_plugin_signature(plugin_id, *trust_unsigned) {
                 Ok(()) => {
                     println!("✓ 插件 {} 签名验证通过", plugin_id);
                     Ok(())
@@ -1253,7 +1251,7 @@ fn handle_plugin_commands(
         }
 
         PluginCommands::Fingerprint { public_key } => {
-            let fingerprint = PluginManager::fingerprint(&public_key);
+            let fingerprint = PluginManager::fingerprint(public_key);
             println!("公钥指纹: {}", fingerprint);
             Ok(())
         }
@@ -1263,7 +1261,7 @@ fn handle_plugin_commands(
 
             // 获取插件信息
             let info = manager
-                .get_plugin_info(&plugin_id)
+                .get_plugin_info(plugin_id)
                 .ok_or_else(|| EnvError::PluginNotFound(plugin_id.clone()))?;
 
             println!("测试插件: {} ({})", info.metadata.name, info.metadata.id);
@@ -1332,7 +1330,7 @@ fn handle_plugin_commands(
             match plugin_id {
                 Some(id) => {
                     // 检查单个插件
-                    let (satisfied, missing) = manager.check_dependencies(&id);
+                    let (satisfied, missing) = manager.check_dependencies(id);
 
                     println!("插件 {} 的依赖状态:", id);
 
@@ -1393,7 +1391,7 @@ fn handle_encrypt_commands(
 ) -> Result<()> {
     match command {
         Commands::Encrypt { key, value, target } => {
-            let target_source = cli::validate_writable_source(&target)?;
+            let target_source = cli::validate_writable_source(target)?;
 
             // 检查 SOPS
             store.check_sops()?;
@@ -1414,7 +1412,7 @@ fn handle_encrypt_commands(
         Commands::Decrypt { key, source } => {
             let encryptor = SopsEncryptor::new();
             let value = if let Some(source_str) = source {
-                let source_filter = cli::parse_list_source(Some(&source_str))?;
+                let source_filter = cli::parse_list_source(Some(source_str))?;
                 let vars = store.list_encrypted(source_filter)?;
                 if let Some(var) = vars.iter().find(|v| v.key == *key) {
                     if var.is_encrypted() {
@@ -1426,7 +1424,7 @@ fn handle_encrypt_commands(
                     return Err(EnvError::NotFound(key.clone()));
                 }
             } else {
-                match store.get_decrypted(&key)? {
+                match store.get_decrypted(key)? {
                     Some(v) => v,
                     None => return Err(EnvError::NotFound(key.clone())),
                 }
@@ -1476,13 +1474,13 @@ fn handle_system_commands(
 ) -> Result<()> {
     match command {
         Commands::SystemSet { key, value, scope } => {
-            validate_scope(&scope)?;
+            validate_scope(scope)?;
             store.set_system(key.clone(), value.clone(), scope)?;
             Ok(())
         }
 
         Commands::SystemUnset { key, scope } => {
-            validate_scope(&scope)?;
+            validate_scope(scope)?;
             store.unset_system(key.clone(), scope)?;
             Ok(())
         }
@@ -1491,7 +1489,7 @@ fn handle_system_commands(
 
         Commands::Run { env, from_file, command: cmd } => {
             // Run 命令需要特殊处理，因为它会直接退出进程
-            handle_run_command(&env, &from_file, &cmd, store, plugin_manager, verbose)
+            handle_run_command(env, from_file, cmd, store, plugin_manager, verbose)
         }
 
         _ => Err(EnvError::InvalidArgument(
@@ -1509,7 +1507,7 @@ fn handle_template_commands(
 
     match command {
         TemplateCommands::Create { name, vars, inherits } => {
-            let template = engine.create_template(&name, &vars, &inherits)?;
+            let template = engine.create_template(name, vars, inherits)?;
 
             if verbose {
                 println!("✓ 已创建模板: {}", template.name);
@@ -1522,7 +1520,7 @@ fn handle_template_commands(
         }
 
         TemplateCommands::Show { name } => {
-            let template = engine.get_template(&name)?;
+            let template = engine.get_template(name)?;
 
             println!("模板名称: {}", template.name);
             println!("内容:\n{}", template.content);
@@ -1593,7 +1591,7 @@ fn handle_template_commands(
 
             // 交互式模式：检查缺失变量
             if *interactive {
-                let template = engine.get_template(&name)?;
+                let template = engine.get_template(name)?;
                 for var_def in &template.variables {
                     if !variables.contains_key(&var_def.name) {
                         if var_def.required {
@@ -1621,7 +1619,7 @@ fn handle_template_commands(
             }
 
             // 渲染模板
-            let result = engine.render_template(&name, &variables)?;
+            let result = engine.render_template(name, &variables)?;
 
             // 输出结果
             match output {
@@ -1642,7 +1640,7 @@ fn handle_template_commands(
         }
 
         TemplateCommands::Delete { name } => {
-            let deleted = engine.delete_template(&name)?;
+            let deleted = engine.delete_template(name)?;
 
             if deleted {
                 if verbose {
@@ -1650,7 +1648,7 @@ fn handle_template_commands(
                 }
                 Ok(())
             } else {
-                return Err(EnvError::TemplateNotFound(name.to_string()));
+                Err(EnvError::TemplateNotFound(name.to_string()))
             }
         }
     }

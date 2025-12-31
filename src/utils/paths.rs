@@ -41,20 +41,17 @@ fn read_system_env_from_source() -> Result<HashMap<String, String>> {
         }
 
         // 从注册表读取用户级环境变量
-        match RegKey::predef(HKEY_CURRENT_USER).open_subkey("Environment") {
-            Ok(reg_key) => {
-                for (name, _value_type) in reg_key.enum_values().flatten() {
-                    if name.starts_with('_') || name == "_" {
-                        continue;
-                    }
-                    if let Ok(value) = reg_key.get_value::<String, _>(&name) {
-                        if !value.is_empty() {
-                            env.insert(name, value);
-                        }
-                    }
+        if let Ok(reg_key) = RegKey::predef(HKEY_CURRENT_USER).open_subkey("Environment") {
+            for (name, _value_type) in reg_key.enum_values().flatten() {
+                if name.starts_with('_') || name == "_" {
+                    continue;
+                }
+                if let Ok(value) = reg_key.get_value::<String, _>(&name)
+                    && !value.is_empty()
+                {
+                    env.insert(name, value);
                 }
             }
-            Err(_) => {}
         }
     }
 
@@ -78,10 +75,8 @@ pub fn get_system_env() -> Result<HashMap<String, String>> {
     let mut cache_opt = cache_guard.lock().unwrap();
 
     // 检查缓存有效性
-    if let Some(cache) = &*cache_opt {
-        if cache.is_valid() {
-            return Ok(cache.env.clone());
-        }
+    if let Some(cache) = &*cache_opt && cache.is_valid() {
+        return Ok(cache.env.clone());
     }
 
     // 缓存失效，重新读取
@@ -106,12 +101,11 @@ pub fn clear_system_env_cache() {
 
 /// 获取系统环境缓存统计信息
 pub fn get_system_env_cache_stats() -> (bool, Duration) {
-    if let Some(cache) = SYSTEM_ENV_CACHE.get() {
-        if let Ok(guard) = cache.lock() {
-            if let Some(c) = &*guard {
-                return (true, c.timestamp.elapsed());
-            }
-        }
+    if let Some(cache) = SYSTEM_ENV_CACHE.get()
+        && let Ok(guard) = cache.lock()
+        && let Some(c) = &*guard
+    {
+        return (true, c.timestamp.elapsed());
     }
     (false, Duration::from_secs(0))
 }
