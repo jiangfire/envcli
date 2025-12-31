@@ -386,7 +386,11 @@ pub trait Plugin: Send + Sync {
     fn initialize(&mut self, config: &PluginConfig) -> Result<(), PluginError>;
 
     /// 执行钩子
-    fn execute_hook(&self, hook_type: HookType, context: &HookContext) -> Result<HookResult, PluginError>;
+    fn execute_hook(
+        &self,
+        hook_type: HookType,
+        context: &HookContext,
+    ) -> Result<HookResult, PluginError>;
 
     /// 检查是否支持扩展点
     fn supports_extension(&self, extension: ExtensionPoint) -> bool;
@@ -424,7 +428,11 @@ pub trait PluginLoader: Send + Sync {
 /// 插件管理器 Trait (用于扩展)
 pub trait PluginManagerExt {
     /// 注册插件
-    fn register(&mut self, plugin: Box<dyn Plugin>, config: PluginConfig) -> Result<(), PluginError>;
+    fn register(
+        &mut self,
+        plugin: Box<dyn Plugin>,
+        config: PluginConfig,
+    ) -> Result<(), PluginError>;
 
     /// 注销插件
     fn unregister(&mut self, plugin_id: &str) -> Result<(), PluginError>;
@@ -447,24 +455,16 @@ pub trait PluginManagerExt {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum CompatibilityIssue {
     /// EnvCLI 版本不匹配
-    EnvCliVersionMismatch {
-        required: String,
-        current: String,
-    },
+    EnvCliVersionMismatch { required: String, current: String },
     /// 平台不兼容
     PlatformMismatch {
         required: Vec<Platform>,
         current: Platform,
     },
     /// 无效的版本格式
-    InvalidVersionFormat {
-        version: String,
-        reason: String,
-    },
+    InvalidVersionFormat { version: String, reason: String },
     /// 缺少依赖
-    MissingDependency {
-        dependency: String,
-    },
+    MissingDependency { dependency: String },
 }
 
 impl std::fmt::Display for CompatibilityIssue {

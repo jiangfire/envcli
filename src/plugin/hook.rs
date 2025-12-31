@@ -2,9 +2,7 @@
 //!
 //! 管理和执行插件钩子，支持优先级和错误处理
 
-use crate::plugin::types::{
-    HookContext, HookPriority, HookResult, HookType, Plugin, PluginError,
-};
+use crate::plugin::types::{HookContext, HookPriority, HookResult, HookType, Plugin, PluginError};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -69,7 +67,11 @@ impl HookDispatcher {
     }
 
     /// 禁用插件的特定钩子
-    pub fn disable_hook(&mut self, hook_type: HookType, plugin_id: &str) -> Result<(), PluginError> {
+    pub fn disable_hook(
+        &mut self,
+        hook_type: HookType,
+        plugin_id: &str,
+    ) -> Result<(), PluginError> {
         if let Some(hooks) = self.hooks.get_mut(&hook_type) {
             for reg in hooks {
                 if reg.plugin.metadata().id == plugin_id {
@@ -336,8 +338,7 @@ impl HookErrorHandler {
         plugin: Arc<dyn Plugin>,
         priority: HookPriority,
     ) -> Result<(), PluginError> {
-        self.dispatcher
-            .register(HookType::Error, plugin, priority)
+        self.dispatcher.register(HookType::Error, plugin, priority)
     }
 
     /// 获取错误处理器统计
@@ -432,11 +433,18 @@ mod tests {
             self.metadata.clone()
         }
 
-        fn initialize(&mut self, _config: &crate::plugin::types::PluginConfig) -> Result<(), PluginError> {
+        fn initialize(
+            &mut self,
+            _config: &crate::plugin::types::PluginConfig,
+        ) -> Result<(), PluginError> {
             Ok(())
         }
 
-        fn execute_hook(&self, _hook_type: HookType, _context: &HookContext) -> Result<HookResult, PluginError> {
+        fn execute_hook(
+            &self,
+            _hook_type: HookType,
+            _context: &HookContext,
+        ) -> Result<HookResult, PluginError> {
             let mut count = self.exec_count.lock().unwrap();
             *count += 1;
 
@@ -451,7 +459,11 @@ mod tests {
             false
         }
 
-        fn execute_extension(&self, _extension: crate::plugin::types::ExtensionPoint, _input: &[u8]) -> Result<Vec<u8>, PluginError> {
+        fn execute_extension(
+            &self,
+            _extension: crate::plugin::types::ExtensionPoint,
+            _input: &[u8],
+        ) -> Result<Vec<u8>, PluginError> {
             Err(PluginError::Unsupported("No extensions".to_string()))
         }
 

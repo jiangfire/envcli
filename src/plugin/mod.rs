@@ -15,45 +15,47 @@
 //! - `api.rs` - 插件 API 和辅助宏
 
 // 子模块定义
-pub mod types;
-pub mod manager;
-pub mod config;
-pub mod hook;
-pub mod dependency;
-pub mod signature;
-pub mod watcher;
-pub mod loader;
 pub mod api;
+pub mod config;
+pub mod dependency;
+pub mod hook;
+pub mod loader;
+pub mod manager;
+pub mod signature;
+pub mod types;
 pub mod validation;
+pub mod watcher;
 
 // 重新导出核心类型
 pub use types::{
-    ExtensionPoint, HookContext, HookPriority, HookResult, HookType, Plugin, PluginConfig,
-    PluginError, PluginInfo, PluginMetadata, PluginResponse, PluginStatus, PluginType, Platform,
-    CreatePluginFn, PluginRequest, PluginSignature, SignatureAlgorithm,
-    CompatibilityIssue, CompatibilityReport,
+    CompatibilityIssue, CompatibilityReport, CreatePluginFn, ExtensionPoint, HookContext,
+    HookPriority, HookResult, HookType, Platform, Plugin, PluginConfig, PluginError, PluginInfo,
+    PluginMetadata, PluginRequest, PluginResponse, PluginSignature, PluginStatus, PluginType,
+    SignatureAlgorithm,
 };
 
 // 重新导出管理器
 pub use manager::{PluginManager, PluginManagerStats};
 
 // 重新导出配置管理器
-pub use config::{PluginConfigManager, PluginGlobalConfig, GlobalSettings, PluginConfigFormatter};
+pub use config::{GlobalSettings, PluginConfigFormatter, PluginConfigManager, PluginGlobalConfig};
 
 // 重新导出钩子系统
-pub use hook::{HookDispatcher, HookExecutor, HookErrorHandler, HookChainBuilder, HookStats};
+pub use hook::{HookChainBuilder, HookDispatcher, HookErrorHandler, HookExecutor, HookStats};
 
 // 重新导出加载器
 pub use loader::{LoaderFactory, PluginLoader};
 
 // 重新导出 API
-pub use api::{helpers, PLUGIN_SDK_VERSION};
+pub use api::{PLUGIN_SDK_VERSION, helpers};
 
 // 重新导出签名验证相关
-pub use signature::{SignatureVerifier, SignatureCache, ThreadSafeSignatureCache, TimestampConfig, SignatureError};
+pub use signature::{
+    SignatureCache, SignatureError, SignatureVerifier, ThreadSafeSignatureCache, TimestampConfig,
+};
 
 // 重新导出监控器相关
-pub use watcher::{PluginWatcher, AutoReloadConfig, ReloadResult, FileChangeEvent};
+pub use watcher::{AutoReloadConfig, FileChangeEvent, PluginWatcher, ReloadResult};
 
 /// 插件系统版本
 pub const PLUGIN_SYSTEM_VERSION: &str = "0.3.0";

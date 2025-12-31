@@ -118,14 +118,19 @@ impl fmt::Display for EncryptionType {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EncryptedEnvVar {
     pub key: String,
-    pub value: String,              // 可能是加密的或明文的
+    pub value: String, // 可能是加密的或明文的
     pub source: EnvSource,
     pub timestamp: u64,
     pub encryption_type: EncryptionType,
 }
 
 impl EncryptedEnvVar {
-    pub fn new(key: String, value: String, source: EnvSource, encryption_type: EncryptionType) -> Self {
+    pub fn new(
+        key: String,
+        value: String,
+        source: EnvSource,
+        encryption_type: EncryptionType,
+    ) -> Self {
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -171,12 +176,7 @@ impl EncryptedEnvVar {
 /// 从 EnvVar 转换为 EncryptedEnvVar（明文）
 impl From<EnvVar> for EncryptedEnvVar {
     fn from(var: EnvVar) -> Self {
-        EncryptedEnvVar::new(
-            var.key,
-            var.value,
-            var.source,
-            EncryptionType::None,
-        )
+        EncryptedEnvVar::new(var.key, var.value, var.source, EncryptionType::None)
     }
 }
 

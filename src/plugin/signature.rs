@@ -2,11 +2,11 @@
 //!
 //! 提供插件签名的生成和验证功能，确保插件来源可信
 
-use crate::plugin::types::{PluginSignature, SignatureAlgorithm, PluginMetadata};
-use ring::signature::{Ed25519KeyPair, ED25519, UnparsedPublicKey};
+use crate::plugin::types::{PluginMetadata, PluginSignature, SignatureAlgorithm};
+use ring::signature::{ED25519, Ed25519KeyPair, UnparsedPublicKey};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use std::time::{SystemTime, UNIX_EPOCH, Instant, Duration};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 
 /// 签名验证错误
@@ -23,10 +23,7 @@ pub enum SignatureError {
     },
 
     #[error("签名已过期: 签名于 {signed_at}，已超过 {max_age} 天")]
-    Expired {
-        signed_at: u64,
-        max_age: u64,
-    },
+    Expired { signed_at: u64, max_age: u64 },
 
     #[error("不支持的签名算法: {0}")]
     UnsupportedAlgorithm(String),
@@ -34,8 +31,15 @@ pub enum SignatureError {
     #[error("签名时间无效: 签名时间 {signed_at} 是未来时间 (当前: {now})")]
     InvalidTimestamp { signed_at: u64, now: u64 },
 
-    #[error("时钟偏差过大: 签名时间 {signed_at} 与当前时间 {now} 相差 {skew} 秒，超过允许的 {max_skew} 秒")]
-    ClockSkewTooLarge { signed_at: u64, now: u64, skew: u64, max_skew: u64 },
+    #[error(
+        "时钟偏差过大: 签名时间 {signed_at} 与当前时间 {now} 相差 {skew} 秒，超过允许的 {max_skew} 秒"
+    )]
+    ClockSkewTooLarge {
+        signed_at: u64,
+        now: u64,
+        skew: u64,
+        max_skew: u64,
+    },
 
     #[error("检测到重放攻击: 签名已被使用过 (哈希: {signature_hash})")]
     ReplayAttackDetected { signature_hash: String },
@@ -88,8 +92,8 @@ impl TimestampConfig {
     /// 创建宽松配置（适合开发环境）
     pub fn lax() -> Self {
         Self {
-            max_age_seconds: 365 * 24 * 60 * 60, // 1年
-            clock_tolerance_seconds: 60 * 60,    // 1小时
+            max_age_seconds: 365 * 24 * 60 * 60,      // 1年
+            clock_tolerance_seconds: 60 * 60,         // 1小时
             max_clock_skew_seconds: 24 * 60 * 60 * 7, // 7天
             require_recent_signature: false,
         }
@@ -104,8 +108,8 @@ impl TimestampConfig {
     pub fn strict() -> Self {
         Self {
             max_age_seconds: 7 * 24 * 60 * 60, // 7天
-            clock_tolerance_seconds: 5 * 60,    // 5分钟
-            max_clock_skew_seconds: 3600, // 1小时
+            clock_tolerance_seconds: 5 * 60,   // 5分钟
+            max_clock_skew_seconds: 3600,      // 1小时
             require_recent_signature: true,
         }
     }
@@ -113,9 +117,9 @@ impl TimestampConfig {
     /// 创建高安全配置（极短有效期）
     pub fn high_security() -> Self {
         Self {
-            max_age_seconds: 24 * 60 * 60, // 1天
-            clock_tolerance_seconds: 2 * 60,    // 2分钟
-            max_clock_skew_seconds: 300, // 5分钟
+            max_age_seconds: 24 * 60 * 60,   // 1天
+            clock_tolerance_seconds: 2 * 60, // 2分钟
+            max_clock_skew_seconds: 300,     // 5分钟
             require_recent_signature: true,
         }
     }
@@ -173,8 +177,8 @@ impl SignatureCache {
     pub fn new() -> Self {
         Self {
             used_signatures: HashMap::new(),
-            max_age_seconds: 3600,  // 默认1小时
-            cleanup_interval_seconds: 300,  // 每5分钟自动清理一次
+            max_age_seconds: 3600,         // 默认1小时
+            cleanup_interval_seconds: 300, // 每5分钟自动清理一次
             last_cleanup: Instant::now(),
         }
     }
@@ -193,8 +197,8 @@ impl SignatureCache {
     pub fn strict() -> Self {
         Self {
             used_signatures: HashMap::new(),
-            max_age_seconds: 300,  // 5分钟
-            cleanup_interval_seconds: 60,  // 每分钟清理
+            max_age_seconds: 300,         // 5分钟
+            cleanup_interval_seconds: 60, // 每分钟清理
             last_cleanup: Instant::now(),
         }
     }
@@ -228,16 +232,17 @@ impl SignatureCache {
         let now = Instant::now();
 
         // 检查是否需要清理
-        if now.duration_since(self.last_cleanup) < Duration::from_secs(self.cleanup_interval_seconds) {
+        if now.duration_since(self.last_cleanup)
+            < Duration::from_secs(self.cleanup_interval_seconds)
+        {
             return 0;
         }
 
         let before = self.used_signatures.len();
         let max_age = Duration::from_secs(self.max_age_seconds);
 
-        self.used_signatures.retain(|_, entry| {
-            now.duration_since(entry.used_at) < max_age
-        });
+        self.used_signatures
+            .retain(|_, entry| now.duration_since(entry.used_at) < max_age);
 
         self.last_cleanup = now;
         before - self.used_signatures.len()
@@ -369,7 +374,7 @@ pub struct SignatureVerifier {
 
 impl Default for SignatureVerifier {
     fn default() -> Self {
-        Self::with_replay_protection()  // 默认启用重放防护
+        Self::with_replay_protection() // 默认启用重放防护
     }
 }
 
@@ -470,7 +475,7 @@ impl SignatureVerifier {
 
     /// 计算签名哈希（用于重放检测）
     fn calculate_signature_hash(signature: &PluginSignature) -> String {
-        use sha2::{Sha256, Digest};
+        use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
         hasher.update(&signature.signature);
         hasher.update(&signature.public_key);
@@ -567,7 +572,9 @@ impl SignatureVerifier {
         Self::verify_timestamp(signature, config)?;
 
         // 检查重放攻击（如果启用）
-        if self.enable_replay_protection && let Some(cache) = &self.cache {
+        if self.enable_replay_protection
+            && let Some(cache) = &self.cache
+        {
             let signature_hash = Self::calculate_signature_hash(signature);
             if cache.is_used(&signature_hash) {
                 return Err(SignatureError::ReplayAttackDetected { signature_hash });
@@ -578,9 +585,7 @@ impl SignatureVerifier {
 
         // 根据算法验证
         match signature.algorithm {
-            SignatureAlgorithm::Ed25519 => {
-                Self::verify_ed25519(metadata_json, signature)
-            }
+            SignatureAlgorithm::Ed25519 => Self::verify_ed25519(metadata_json, signature),
         }
     }
 
@@ -591,7 +596,10 @@ impl SignatureVerifier {
     /// 2. 签名时间不能是未来（超出时钟容忍度）
     /// 3. 签名不能超过有效期
     /// 4. 可选：要求签名在合理时间范围内
-    fn verify_timestamp(sig: &PluginSignature, config: &TimestampConfig) -> Result<(), SignatureError> {
+    fn verify_timestamp(
+        sig: &PluginSignature,
+        config: &TimestampConfig,
+    ) -> Result<(), SignatureError> {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
@@ -642,10 +650,7 @@ impl SignatureVerifier {
     }
 
     /// Ed25519 签名验证
-    fn verify_ed25519(
-        metadata_json: &str,
-        sig: &PluginSignature,
-    ) -> Result<(), SignatureError> {
+    fn verify_ed25519(metadata_json: &str, sig: &PluginSignature) -> Result<(), SignatureError> {
         // 解码十六进制
         let public_key_bytes = hex::decode(&sig.public_key)?;
         let signature_bytes = hex::decode(&sig.signature)?;
@@ -713,7 +718,7 @@ impl SignatureVerifier {
 
         if private_key_bytes.len() != 32 {
             return Err(SignatureError::SigningFailed(
-                "Ed25519 私钥种子必须是 32 字节".to_string()
+                "Ed25519 私钥种子必须是 32 字节".to_string(),
             ));
         }
 
@@ -774,7 +779,7 @@ impl SignatureVerifier {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plugin::types::{PluginType, Platform};
+    use crate::plugin::types::{Platform, PluginType};
 
     #[test]
     fn test_generate_key_pair() {
@@ -782,8 +787,8 @@ mod tests {
         assert!(result.is_ok());
 
         let (private_key, public_key) = result.unwrap();
-        assert_eq!(private_key.len(), 64);  // 32字节 = 64 hex chars (种子)
-        assert_eq!(public_key.len(), 64);   // 32字节 = 64 hex chars
+        assert_eq!(private_key.len(), 64); // 32字节 = 64 hex chars (种子)
+        assert_eq!(public_key.len(), 64); // 32字节 = 64 hex chars
     }
 
     #[test]
@@ -811,7 +816,9 @@ mod tests {
 
         // 生成签名
         let metadata_json = serde_json::to_string(&metadata).unwrap();
-        let signature = SignatureVerifier::sign(&metadata_json, &private_key, SignatureAlgorithm::Ed25519).unwrap();
+        let signature =
+            SignatureVerifier::sign(&metadata_json, &private_key, SignatureAlgorithm::Ed25519)
+                .unwrap();
 
         // 验证签名（使用实例方法）
         let verifier = SignatureVerifier::new();
@@ -837,9 +844,10 @@ mod tests {
         // 由于时钟偏差检查（默认24小时），时间戳0会先触发 ClockSkewTooLarge
         let err = result.unwrap_err();
         assert!(
-            matches!(err, SignatureError::ClockSkewTooLarge { .. }) ||
-            matches!(err, SignatureError::Expired { .. }),
-            "Expected ClockSkewTooLarge or Expired, got: {:?}", err
+            matches!(err, SignatureError::ClockSkewTooLarge { .. })
+                || matches!(err, SignatureError::Expired { .. }),
+            "Expected ClockSkewTooLarge or Expired, got: {:?}",
+            err
         );
     }
 
@@ -892,7 +900,9 @@ mod tests {
     #[test]
     fn test_fingerprint() {
         // 测试正常情况 - 32字节公钥（64个十六进制字符），取前8字节
-        let fp = SignatureVerifier::fingerprint("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+        let fp = SignatureVerifier::fingerprint(
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        );
         assert_eq!(fp, "0123456789abcdef"); // 前8字节 = 16个十六进制字符
 
         // 测试短输入（8字节）- 返回全部
@@ -929,7 +939,9 @@ mod tests {
 
         // 生成签名
         let metadata_json = serde_json::to_string(&metadata).unwrap();
-        let signature = SignatureVerifier::sign(&metadata_json, &private_key, SignatureAlgorithm::Ed25519).unwrap();
+        let signature =
+            SignatureVerifier::sign(&metadata_json, &private_key, SignatureAlgorithm::Ed25519)
+                .unwrap();
 
         // 创建启用重放防护的验证器
         let verifier = SignatureVerifier::with_replay_protection();
@@ -975,7 +987,9 @@ mod tests {
 
         // 生成签名
         let metadata_json = serde_json::to_string(&metadata).unwrap();
-        let signature = SignatureVerifier::sign(&metadata_json, &private_key, SignatureAlgorithm::Ed25519).unwrap();
+        let signature =
+            SignatureVerifier::sign(&metadata_json, &private_key, SignatureAlgorithm::Ed25519)
+                .unwrap();
 
         // 创建禁用重放防护的验证器
         let verifier = SignatureVerifier::new();
@@ -1084,9 +1098,16 @@ mod tests {
         let cleaned = cache.cleanup_expired();
 
         // 验证清理结果
-        assert!(cleaned > 0, "应该清理至少1个过期条目，实际清理了: {}", cleaned);
+        assert!(
+            cleaned > 0,
+            "应该清理至少1个过期条目，实际清理了: {}",
+            cleaned
+        );
         assert_eq!(cache.size(), 0, "清理后缓存应该为空");
-        assert!(!cache.is_used("test_hash"), "过期的签名应该不再被标记为已使用");
+        assert!(
+            !cache.is_used("test_hash"),
+            "过期的签名应该不再被标记为已使用"
+        );
     }
 
     #[test]

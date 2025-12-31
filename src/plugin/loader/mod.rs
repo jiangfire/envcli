@@ -41,10 +41,7 @@ impl LoaderFactory {
 
     /// 加载插件（自动检测类型）
     #[allow(clippy::ptr_arg)]
-    pub fn load_auto(
-        path: &Path,
-        config: PluginConfig,
-    ) -> Result<Box<dyn Plugin>, PluginError> {
+    pub fn load_auto(path: &Path, config: PluginConfig) -> Result<Box<dyn Plugin>, PluginError> {
         let plugin_type = Self::detect_type(path)?;
         let loader = Self::get_loader(plugin_type);
         loader.load(path, config)
@@ -98,22 +95,23 @@ mod tests {
 
         // 测试 WASM
         let path = PathBuf::from("/test/plugin.wasm");
-        assert_eq!(
-            LoaderFactory::detect_type(&path).unwrap(),
-            PluginType::Wasm
-        );
+        assert_eq!(LoaderFactory::detect_type(&path).unwrap(), PluginType::Wasm);
     }
 
     #[test]
     fn test_loader_factory_get_loader() {
         let loader = LoaderFactory::get_loader(PluginType::DynamicLibrary);
-        assert!(loader
-            .supported_types()
-            .contains(&PluginType::DynamicLibrary));
+        assert!(
+            loader
+                .supported_types()
+                .contains(&PluginType::DynamicLibrary)
+        );
 
         let loader = LoaderFactory::get_loader(PluginType::ExternalExecutable);
-        assert!(loader
-            .supported_types()
-            .contains(&PluginType::ExternalExecutable));
+        assert!(
+            loader
+                .supported_types()
+                .contains(&PluginType::ExternalExecutable)
+        );
     }
 }

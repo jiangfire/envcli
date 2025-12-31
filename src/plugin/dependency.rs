@@ -156,7 +156,7 @@ impl DependencyResolver {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plugin::types::{PluginType, Platform};
+    use crate::plugin::types::{Platform, PluginType};
 
     #[test]
     fn test_simple_dependency() {

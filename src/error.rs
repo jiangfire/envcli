@@ -1,9 +1,9 @@
 //! 错误处理模块 (修复原则：明确抛出异常)
 
+use crate::plugin::PluginError;
 use std::error::Error;
 use std::path::PathBuf;
 use thiserror::Error;
-use crate::plugin::PluginError;
 
 #[derive(Error, Debug)]
 pub enum EnvError {
@@ -275,7 +275,10 @@ impl EnvError {
                 eprintln!("  2. 移除循环引用");
                 eprintln!("  3. 简化模板结构");
             }
-            EnvError::ParseError(_) | EnvError::Parse(_) | EnvError::Toml(_) | EnvError::EnvParseError(_) => {
+            EnvError::ParseError(_)
+            | EnvError::Parse(_)
+            | EnvError::Toml(_)
+            | EnvError::EnvParseError(_) => {
                 eprintln!();
                 eprintln!("💡 建议:");
                 eprintln!("  1. 检查文件格式是否正确");

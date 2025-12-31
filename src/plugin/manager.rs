@@ -39,12 +39,12 @@ use crate::plugin::hook::HookDispatcher;
 use crate::plugin::loader::LoaderFactory;
 use crate::plugin::signature::{SignatureVerifier, ThreadSafeSignatureCache, TimestampConfig};
 use crate::plugin::types::{
-    HookContext, HookPriority, HookResult, HookType, Plugin, PluginConfig, PluginError,
-    PluginInfo, PluginMetadata, PluginSignature, PluginStatus, SignatureAlgorithm,
-    CompatibilityIssue, CompatibilityReport, Platform,
+    CompatibilityIssue, CompatibilityReport, HookContext, HookPriority, HookResult, HookType,
+    Platform, Plugin, PluginConfig, PluginError, PluginInfo, PluginMetadata, PluginSignature,
+    PluginStatus, SignatureAlgorithm,
 };
-use crate::plugin::validation::{PluginIdValidator, PathValidator, ConfigValidator};
-use crate::utils::encryption::{SopsEncryptor, CacheConfig as EncryptorCacheConfig};
+use crate::plugin::validation::{ConfigValidator, PathValidator, PluginIdValidator};
+use crate::utils::encryption::{CacheConfig as EncryptorCacheConfig, SopsEncryptor};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock};
@@ -109,7 +109,11 @@ impl Plugin for PluginWrapper {
         plugin.initialize(config)
     }
 
-    fn execute_hook(&self, hook_type: HookType, context: &HookContext) -> Result<HookResult, PluginError> {
+    fn execute_hook(
+        &self,
+        hook_type: HookType,
+        context: &HookContext,
+    ) -> Result<HookResult, PluginError> {
         let plugin = self.inner.lock().unwrap();
         plugin.execute_hook(hook_type, context)
     }
@@ -119,7 +123,11 @@ impl Plugin for PluginWrapper {
         plugin.supports_extension(extension)
     }
 
-    fn execute_extension(&self, extension: crate::plugin::types::ExtensionPoint, input: &[u8]) -> Result<Vec<u8>, PluginError> {
+    fn execute_extension(
+        &self,
+        extension: crate::plugin::types::ExtensionPoint,
+        input: &[u8],
+    ) -> Result<Vec<u8>, PluginError> {
         let plugin = self.inner.lock().unwrap();
         plugin.execute_extension(extension, input)
     }
@@ -257,7 +265,9 @@ impl PluginManager {
     }
 
     /// 从配置创建插件管理器
-    pub fn from_config(_config: crate::plugin::config::PluginGlobalConfig) -> Result<Self, PluginError> {
+    pub fn from_config(
+        _config: crate::plugin::config::PluginGlobalConfig,
+    ) -> Result<Self, PluginError> {
         Self::new()
     }
 
@@ -308,36 +318,44 @@ impl PluginManager {
         use std::fs;
 
         // 收集要保存的数据
-        let configs: HashMap<String, serde_json::Value> = self.plugin_configs
+        let configs: HashMap<String, serde_json::Value> = self
+            .plugin_configs
             .read()
             .unwrap()
             .iter()
             .map(|(id, config)| {
-                (id.clone(), json!({
-                    "plugin_id": config.plugin_id,
-                    "enabled": config.enabled,
-                    "settings": config.settings,
-                    "path": config.path.as_ref().map(|p| p.to_string_lossy().to_string()),
-                    "timeout": config.timeout,
-                    "env": config.env,
-                }))
+                (
+                    id.clone(),
+                    json!({
+                        "plugin_id": config.plugin_id,
+                        "enabled": config.enabled,
+                        "settings": config.settings,
+                        "path": config.path.as_ref().map(|p| p.to_string_lossy().to_string()),
+                        "timeout": config.timeout,
+                        "env": config.env,
+                    }),
+                )
             })
             .collect();
 
-        let statuses: HashMap<String, serde_json::Value> = self.plugin_statuses
+        let statuses: HashMap<String, serde_json::Value> = self
+            .plugin_statuses
             .read()
             .unwrap()
             .iter()
             .map(|(id, status)| {
-                (id.clone(), json!({
-                    "plugin_id": status.plugin_id,
-                    "enabled": status.enabled,
-                    "loaded": status.loaded,
-                    "last_error": status.last_error,
-                    "execution_count": status.execution_count,
-                    "error_count": status.error_count,
-                    "last_execution": status.last_execution,
-                }))
+                (
+                    id.clone(),
+                    json!({
+                        "plugin_id": status.plugin_id,
+                        "enabled": status.enabled,
+                        "loaded": status.loaded,
+                        "last_error": status.last_error,
+                        "execution_count": status.execution_count,
+                        "error_count": status.error_count,
+                        "last_execution": status.last_execution,
+                    }),
+                )
             })
             .collect();
 
@@ -364,11 +382,14 @@ impl PluginManager {
 
     /// 从文件加载插件状态（持久化恢复）
     pub fn load_state(&mut self, path: &Path) -> Result<(), PluginError> {
-        use std::fs;
         use serde_json::Value;
+        use std::fs;
 
         if !path.exists() {
-            return Err(PluginError::LoadFailed(format!("状态文件不存在: {}", path.display())));
+            return Err(PluginError::LoadFailed(format!(
+                "状态文件不存在: {}",
+                path.display()
+            )));
         }
 
         let content = fs::read_to_string(path)
@@ -385,25 +406,17 @@ impl PluginManager {
                     let plugin_config = PluginConfig {
                         plugin_id: id.clone(),
                         enabled: obj.get("enabled").and_then(|v| v.as_bool()).unwrap_or(true),
-                        settings: obj.get("settings")
+                        settings: obj
+                            .get("settings")
                             .and_then(|v| v.as_object())
-                            .map(|m| {
-                                m.iter()
-                                    .map(|(k, v)| (k.clone(), v.to_string()))
-                                    .collect()
-                            })
+                            .map(|m| m.iter().map(|(k, v)| (k.clone(), v.to_string())).collect())
                             .unwrap_or_default(),
-                        path: obj.get("path")
-                            .and_then(|v| v.as_str())
-                            .map(PathBuf::from),
+                        path: obj.get("path").and_then(|v| v.as_str()).map(PathBuf::from),
                         timeout: obj.get("timeout").and_then(|v| v.as_u64()),
-                        env: obj.get("env")
+                        env: obj
+                            .get("env")
                             .and_then(|v| v.as_object())
-                            .map(|m| {
-                                m.iter()
-                                    .map(|(k, v)| (k.clone(), v.to_string()))
-                                    .collect()
-                            })
+                            .map(|m| m.iter().map(|(k, v)| (k.clone(), v.to_string())).collect())
                             .unwrap_or_default(),
                     };
                     plugin_configs.insert(id.clone(), plugin_config);
@@ -420,8 +433,14 @@ impl PluginManager {
                         plugin_id: id.clone(),
                         enabled: obj.get("enabled").and_then(|v| v.as_bool()).unwrap_or(true),
                         loaded: obj.get("loaded").and_then(|v| v.as_bool()).unwrap_or(false),
-                        last_error: obj.get("last_error").and_then(|v| v.as_str()).map(String::from),
-                        execution_count: obj.get("execution_count").and_then(|v| v.as_u64()).unwrap_or(0),
+                        last_error: obj
+                            .get("last_error")
+                            .and_then(|v| v.as_str())
+                            .map(String::from),
+                        execution_count: obj
+                            .get("execution_count")
+                            .and_then(|v| v.as_u64())
+                            .unwrap_or(0),
                         error_count: obj.get("error_count").and_then(|v| v.as_u64()).unwrap_or(0),
                         last_execution: obj.get("last_execution").and_then(|v| v.as_u64()),
                     };
@@ -465,7 +484,13 @@ impl PluginManager {
         PluginIdValidator::validate(&plugin_id)?;
 
         // 检查插件ID冲突
-        let existing_ids: Vec<String> = self.plugin_configs.read().unwrap().keys().cloned().collect();
+        let existing_ids: Vec<String> = self
+            .plugin_configs
+            .read()
+            .unwrap()
+            .keys()
+            .cloned()
+            .collect();
         PluginIdValidator::check_conflict(&plugin_id, &existing_ids)?;
 
         // 创建配置
@@ -490,7 +515,10 @@ impl PluginManager {
         // 注册插件
         let plugin_arc = Arc::new(Mutex::new(plugin));
         self.plugins.insert(plugin_id.clone(), plugin_arc.clone());
-        self.plugin_configs.write().unwrap().insert(plugin_id.clone(), config.clone());
+        self.plugin_configs
+            .write()
+            .unwrap()
+            .insert(plugin_id.clone(), config.clone());
 
         // 注册钩子（使用包装器）
         let wrapper = PluginWrapper {
@@ -516,9 +544,10 @@ impl PluginManager {
                     // 如果状态已插入，也移除
                     self.plugin_statuses.write().unwrap().remove(&plugin_id);
 
-                    return Err(PluginError::ExecutionFailed(
-                        format!("钩子注册失败: {} (已回滚)", e)
-                    ));
+                    return Err(PluginError::ExecutionFailed(format!(
+                        "钩子注册失败: {} (已回滚)",
+                        e
+                    )));
                 }
             }
         }
@@ -629,7 +658,11 @@ impl PluginManager {
     /// - 如果重载失败，会完全恢复原状态（包括钩子注册）
     /// - 保证事务性：要么完全成功，要么完全回滚
     /// - 可以选择是否验证新插件的签名
-    pub fn reload_with_config(&mut self, plugin_id: &str, verify_signature: bool) -> Result<String, PluginError> {
+    pub fn reload_with_config(
+        &mut self,
+        plugin_id: &str,
+        verify_signature: bool,
+    ) -> Result<String, PluginError> {
         // 0. 并发检查：防止同一插件同时被重载
         {
             let mut reloading = self.reloading_plugins.lock().unwrap();
@@ -639,9 +672,10 @@ impl PluginManager {
             if let Some(start_time) = reloading.get(plugin_id) {
                 // 如果重载时间超过5分钟，认为是僵尸任务，允许新的重载
                 if now.duration_since(*start_time) < Duration::from_secs(300) {
-                    return Err(PluginError::ExecutionFailed(
-                        format!("插件 {} 正在重载中，请稍后再试", plugin_id)
-                    ));
+                    return Err(PluginError::ExecutionFailed(format!(
+                        "插件 {} 正在重载中，请稍后再试",
+                        plugin_id
+                    )));
                 }
             }
 
@@ -663,34 +697,40 @@ impl PluginManager {
         // 处理结果
         match result {
             Ok(r) => r,
-            Err(_) => Err(PluginError::ExecutionFailed(
-                format!("插件 {} 重载过程中发生 panic", plugin_id)
-            )),
+            Err(_) => Err(PluginError::ExecutionFailed(format!(
+                "插件 {} 重载过程中发生 panic",
+                plugin_id
+            ))),
         }
     }
 
     /// 执行重载并自动清理（内部方法）
-    fn do_reload_with_cleanup(&mut self, plugin_id: &str, verify_signature: bool) -> Result<String, PluginError> {
+    fn do_reload_with_cleanup(
+        &mut self,
+        plugin_id: &str,
+        verify_signature: bool,
+    ) -> Result<String, PluginError> {
         // 1. 一次性收集完整状态快照（避免持有多个锁导致死锁）
         // 遵循锁获取顺序规范：先获取 configs 读锁，再获取 statuses 读锁
         let snapshot = {
             let configs = self.plugin_configs.read().unwrap();
             let statuses = self.plugin_statuses.read().unwrap();
 
-            let config = configs.get(plugin_id)
+            let config = configs
+                .get(plugin_id)
                 .ok_or_else(|| PluginError::NotFound(plugin_id.to_string()))?
                 .clone();
 
             // 验证插件文件存在
-            let plugin_path = config.path.clone()
-                .ok_or_else(|| PluginError::Unsupported(
-                    format!("无法重载插件 {}: 缺少路径信息", plugin_id)
-                ))?;
+            let plugin_path = config.path.clone().ok_or_else(|| {
+                PluginError::Unsupported(format!("无法重载插件 {}: 缺少路径信息", plugin_id))
+            })?;
 
             if !plugin_path.exists() {
-                return Err(PluginError::LoadFailed(
-                    format!("插件文件不存在: {}", plugin_path.display())
-                ));
+                return Err(PluginError::LoadFailed(format!(
+                    "插件文件不存在: {}",
+                    plugin_path.display()
+                )));
             }
 
             let status = statuses.get(plugin_id).cloned();
@@ -727,16 +767,18 @@ impl PluginManager {
 
             // 验证新插件已正确注册
             if !self.plugins.contains_key(&new_id) {
-                return Err(PluginError::LoadFailed(
-                    format!("插件加载后未正确注册: {}", new_id)
-                ));
+                return Err(PluginError::LoadFailed(format!(
+                    "插件加载后未正确注册: {}",
+                    new_id
+                )));
             }
 
             // 检查ID冲突（如果ID改变）
             if new_id != plugin_id && self.plugins.contains_key(&new_id) {
-                return Err(PluginError::LoadFailed(
-                    format!("重载后ID冲突: 插件 {} 已存在", new_id)
-                ));
+                return Err(PluginError::LoadFailed(format!(
+                    "重载后ID冲突: 插件 {} 已存在",
+                    new_id
+                )));
             }
 
             // 根据配置决定是否验证新插件的签名
@@ -763,11 +805,12 @@ impl PluginManager {
                     snapshot.config,
                     snapshot.status,
                     snapshot.plugin,
-                    &snapshot.hooks
+                    &snapshot.hooks,
                 )?;
-                Err(PluginError::ExecutionFailed(
-                    format!("重载插件 {} 失败，已回滚: {}", plugin_id, e)
-                ))
+                Err(PluginError::ExecutionFailed(format!(
+                    "重载插件 {} 失败，已回滚: {}",
+                    plugin_id, e
+                )))
             }
         }
     }
@@ -800,16 +843,23 @@ impl PluginManager {
         self.hook_dispatcher.unregister(plugin_id);
 
         // 步骤2: 恢复配置
-        self.plugin_configs.write().unwrap().insert(plugin_id.to_string(), old_config);
+        self.plugin_configs
+            .write()
+            .unwrap()
+            .insert(plugin_id.to_string(), old_config);
 
         // 步骤3: 恢复状态
         if let Some(status) = old_status {
-            self.plugin_statuses.write().unwrap().insert(plugin_id.to_string(), status);
+            self.plugin_statuses
+                .write()
+                .unwrap()
+                .insert(plugin_id.to_string(), status);
         }
 
         // 步骤4: 恢复插件实例
         if let Some(plugin_arc) = old_plugin {
-            self.plugins.insert(plugin_id.to_string(), plugin_arc.clone());
+            self.plugins
+                .insert(plugin_id.to_string(), plugin_arc.clone());
 
             // 步骤5: 重新注册钩子（使用包装器）
             let wrapper = PluginWrapper {
@@ -831,13 +881,18 @@ impl PluginManager {
     }
 
     /// 验证回滚的完整性
-    fn verify_rollback_integrity(&self, plugin_id: &str, expected_hooks: &[HookType]) -> Result<(), PluginError> {
+    fn verify_rollback_integrity(
+        &self,
+        plugin_id: &str,
+        expected_hooks: &[HookType],
+    ) -> Result<(), PluginError> {
         // 检查配置是否存在
         let configs = self.plugin_configs.read().unwrap();
         if !configs.contains_key(plugin_id) {
-            return Err(PluginError::ExecutionFailed(
-                format!("回滚验证失败: 配置丢失 for {}", plugin_id)
-            ));
+            return Err(PluginError::ExecutionFailed(format!(
+                "回滚验证失败: 配置丢失 for {}",
+                plugin_id
+            )));
         }
 
         // 检查插件实例是否恢复
@@ -845,9 +900,10 @@ impl PluginManager {
             // 如果期望有插件实例但实际没有，这是可接受的（可能原来就没有）
             // 但如果有旧插件实例，必须恢复
             if !expected_hooks.is_empty() {
-                return Err(PluginError::ExecutionFailed(
-                    format!("回滚验证失败: 插件实例丢失 for {}", plugin_id)
-                ));
+                return Err(PluginError::ExecutionFailed(format!(
+                    "回滚验证失败: 插件实例丢失 for {}",
+                    plugin_id
+                )));
             }
         }
 
@@ -872,7 +928,8 @@ impl PluginManager {
         hook_type: HookType,
         context: HookContext<'a>,
     ) -> Result<(HookContext<'a>, Vec<HookResult>), PluginError> {
-        self.hook_dispatcher.execute_with_context(hook_type, context)
+        self.hook_dispatcher
+            .execute_with_context(hook_type, context)
     }
 
     /// 获取插件信息
@@ -907,8 +964,13 @@ impl PluginManager {
                 continue;
             }
 
-            let status = self.plugin_statuses.read().unwrap().get(plugin_id).cloned().unwrap_or_else(|| {
-                PluginStatus {
+            let status = self
+                .plugin_statuses
+                .read()
+                .unwrap()
+                .get(plugin_id)
+                .cloned()
+                .unwrap_or_else(|| PluginStatus {
                     plugin_id: plugin_id.clone(),
                     enabled: config.enabled,
                     loaded: true,
@@ -916,8 +978,7 @@ impl PluginManager {
                     execution_count: 0,
                     error_count: 0,
                     last_execution: None,
-                }
-            });
+                });
 
             let metadata = {
                 let plugin = plugin_arc.lock().unwrap();
@@ -997,7 +1058,13 @@ impl PluginManager {
                 .values()
                 .map(|s| s.execution_count)
                 .sum(),
-            total_errors: self.plugin_statuses.read().unwrap().values().map(|s| s.error_count).sum(),
+            total_errors: self
+                .plugin_statuses
+                .read()
+                .unwrap()
+                .values()
+                .map(|s| s.error_count)
+                .sum(),
             hook_stats: self.hook_dispatcher.get_stats(),
         }
     }
@@ -1038,7 +1105,10 @@ impl PluginManager {
     ///
     /// # 返回
     /// 成功加载的插件ID列表（按依赖顺序）
-    pub fn load_with_dependencies(&mut self, paths: &[PathBuf]) -> Result<Vec<String>, PluginError> {
+    pub fn load_with_dependencies(
+        &mut self,
+        paths: &[PathBuf],
+    ) -> Result<Vec<String>, PluginError> {
         // 1. 先加载所有插件获取元数据（不注册钩子）
         let mut temp_metadata: HashMap<String, PluginMetadata> = HashMap::new();
         let mut path_map: HashMap<String, PathBuf> = HashMap::new();
@@ -1048,7 +1118,8 @@ impl PluginManager {
             let loader = LoaderFactory::get_loader(plugin_type);
 
             // 创建临时配置获取元数据
-            let plugin_id = path.file_stem()
+            let plugin_id = path
+                .file_stem()
                 .unwrap_or_default()
                 .to_string_lossy()
                 .to_string();
@@ -1095,7 +1166,11 @@ impl PluginManager {
     ///
     /// # 返回
     /// 成功加载的插件ID列表（按依赖顺序）
-    pub fn scan_and_load_with_deps(&mut self, recursive: bool, auto_resolve_deps: bool) -> Result<Vec<String>, PluginError> {
+    pub fn scan_and_load_with_deps(
+        &mut self,
+        recursive: bool,
+        auto_resolve_deps: bool,
+    ) -> Result<Vec<String>, PluginError> {
         if !self.plugin_dir.exists() {
             return Ok(Vec::new());
         }
@@ -1127,7 +1202,12 @@ impl PluginManager {
     }
 
     /// 递归收集插件文件
-    fn collect_plugin_files(&self, dir: &Path, recursive: bool, files: &mut Vec<PathBuf>) -> Result<(), PluginError> {
+    fn collect_plugin_files(
+        &self,
+        dir: &Path,
+        recursive: bool,
+        files: &mut Vec<PathBuf>,
+    ) -> Result<(), PluginError> {
         for entry in std::fs::read_dir(dir)? {
             let entry = entry?;
             let path = entry.path();
@@ -1138,7 +1218,10 @@ impl PluginManager {
                 // 检查是否是插件文件（根据扩展名）
                 if let Some(ext) = path.extension() {
                     let ext_str = ext.to_string_lossy().to_lowercase();
-                    if matches!(ext_str.as_str(), "dll" | "so" | "dylib" | "json" | "yaml" | "yml") {
+                    if matches!(
+                        ext_str.as_str(),
+                        "dll" | "so" | "dylib" | "json" | "yaml" | "yml"
+                    ) {
                         files.push(path);
                     }
                 }
@@ -1180,7 +1263,11 @@ impl PluginManager {
     ///
     /// # 返回
     /// 成功加载的依赖列表
-    pub fn auto_load_missing_deps(&mut self, plugin_id: &str, search_dir: Option<&Path>) -> Result<Vec<String>, PluginError> {
+    pub fn auto_load_missing_deps(
+        &mut self,
+        plugin_id: &str,
+        search_dir: Option<&Path>,
+    ) -> Result<Vec<String>, PluginError> {
         let (_, missing) = self.check_dependencies(plugin_id);
         if missing.is_empty() {
             return Ok(Vec::new());
@@ -1313,7 +1400,8 @@ impl PluginManager {
     /// # 返回
     /// (兼容性检查结果, 详细信息)
     pub fn check_compatibility(&self, plugin_id: &str) -> Result<CompatibilityReport, PluginError> {
-        let info = self.get_plugin_info(plugin_id)
+        let info = self
+            .get_plugin_info(plugin_id)
             .ok_or_else(|| PluginError::NotFound(plugin_id.to_string()))?;
 
         let metadata = &info.metadata;
@@ -1321,25 +1409,22 @@ impl PluginManager {
 
         // 1. 检查 EnvCLI 版本要求
         if let Some(required_version) = &metadata.envcli_version
-            && !self.check_envcli_version(required_version) {
-            report.add_issue(
-                CompatibilityIssue::EnvCliVersionMismatch {
-                    required: required_version.clone(),
-                    current: env!("CARGO_PKG_VERSION").to_string(),
-                }
-            );
+            && !self.check_envcli_version(required_version)
+        {
+            report.add_issue(CompatibilityIssue::EnvCliVersionMismatch {
+                required: required_version.clone(),
+                current: env!("CARGO_PKG_VERSION").to_string(),
+            });
         }
 
         // 2. 检查平台兼容性
         if !metadata.platforms.is_empty() {
             let current_platform = Platform::current();
             if !metadata.platforms.contains(&current_platform) {
-                report.add_issue(
-                    CompatibilityIssue::PlatformMismatch {
-                        required: metadata.platforms.clone(),
-                        current: current_platform,
-                    }
-                );
+                report.add_issue(CompatibilityIssue::PlatformMismatch {
+                    required: metadata.platforms.clone(),
+                    current: current_platform,
+                });
             }
         }
 
@@ -1396,7 +1481,7 @@ impl PluginManager {
                 conflicts.push((
                     id.clone(),
                     "multiple".to_string(),
-                    format!("插件ID重复: {} 个实例", count)
+                    format!("插件ID重复: {} 个实例", count),
                 ));
             }
         }
@@ -1414,7 +1499,7 @@ impl PluginManager {
                         conflicts.push((
                             id.clone(),
                             metadata.version.clone(),
-                            "依赖循环检测到".to_string()
+                            "依赖循环检测到".to_string(),
                         ));
                     }
                 }
@@ -1482,7 +1567,8 @@ impl PluginManager {
                 let major = parts[0];
                 let minor = parts[1].parse::<u32>().unwrap_or(0);
                 let upper = format!("{}.{}.0", major, minor + 1);
-                self.version_compare(version, required) >= 0 && self.version_compare(version, &upper) < 0
+                self.version_compare(version, required) >= 0
+                    && self.version_compare(version, &upper) < 0
             } else {
                 true
             }
@@ -1492,7 +1578,8 @@ impl PluginManager {
             if !parts.is_empty() {
                 let major = parts[0].parse::<u32>().unwrap_or(0);
                 let upper = format!("{}.0.0", major + 1);
-                self.version_compare(version, required) >= 0 && self.version_compare(version, &upper) < 0
+                self.version_compare(version, required) >= 0
+                    && self.version_compare(version, &upper) < 0
             } else {
                 true
             }
@@ -1514,7 +1601,10 @@ impl PluginManager {
         // 支持语义化版本：major.minor.patch
         let parts: Vec<&str> = version.split('.').collect();
         if parts.len() < 2 || parts.len() > 3 {
-            return Err(format!("版本格式无效: {} (期望: major.minor 或 major.minor.patch)", version));
+            return Err(format!(
+                "版本格式无效: {} (期望: major.minor 或 major.minor.patch)",
+                version
+            ));
         }
 
         for part in parts {
@@ -1623,7 +1713,8 @@ impl PluginManagerPerformanceStats {
     /// 记录操作耗时
     pub fn record_operation(&mut self, operation: &str, duration: Duration) {
         let duration_ms = duration.as_millis() as u64;
-        let entry = self.operation_durations
+        let entry = self
+            .operation_durations
             .entry(operation.to_string())
             .or_insert((0, 0));
         entry.0 += duration_ms;
@@ -1633,7 +1724,8 @@ impl PluginManagerPerformanceStats {
     /// 获取操作平均耗时（毫秒）
     pub fn get_avg_duration(&self, operation: &str) -> Option<u64> {
         if let Some((total, count)) = self.operation_durations.get(operation)
-            && *count > 0 {
+            && *count > 0
+        {
             return Some(total / count);
         }
         None
@@ -1641,7 +1733,10 @@ impl PluginManagerPerformanceStats {
 
     /// 获取操作总调用次数
     pub fn get_operation_count(&self, operation: &str) -> u64 {
-        self.operation_durations.get(operation).map(|(_, count)| *count).unwrap_or(0)
+        self.operation_durations
+            .get(operation)
+            .map(|(_, count)| *count)
+            .unwrap_or(0)
     }
 
     /// 获取所有操作统计
@@ -1702,7 +1797,7 @@ pub struct PluginManagerStats {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plugin::types::{PluginType, Platform};
+    use crate::plugin::types::{Platform, PluginType};
 
     #[test]
     fn test_plugin_manager_creation() {
@@ -1740,13 +1835,15 @@ mod tests {
         assert!(result.is_ok());
 
         let (private_key, public_key) = result.unwrap();
-        assert_eq!(private_key.len(), 64);  // 32字节种子 = 64 hex chars
-        assert_eq!(public_key.len(), 64);   // 32字节公钥 = 64 hex chars
+        assert_eq!(private_key.len(), 64); // 32字节种子 = 64 hex chars
+        assert_eq!(public_key.len(), 64); // 32字节公钥 = 64 hex chars
     }
 
     #[test]
     fn test_fingerprint() {
-        let fp = PluginManager::fingerprint("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+        let fp = PluginManager::fingerprint(
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        );
         assert_eq!(fp, "0123456789abcdef");
     }
 
@@ -1774,7 +1871,9 @@ mod tests {
         let (private_key, public_key) = PluginManager::generate_key_pair().unwrap();
 
         // 为元数据生成签名
-        let signature = SignatureVerifier::sign_metadata(&metadata, &private_key, SignatureAlgorithm::Ed25519).unwrap();
+        let signature =
+            SignatureVerifier::sign_metadata(&metadata, &private_key, SignatureAlgorithm::Ed25519)
+                .unwrap();
 
         // 创建验证器实例
         let verifier = SignatureVerifier::new();
@@ -1890,7 +1989,7 @@ mod tests {
 
     #[test]
     fn test_compatibility_report() {
-        use crate::plugin::types::{CompatibilityReport, CompatibilityIssue};
+        use crate::plugin::types::{CompatibilityIssue, CompatibilityReport};
 
         let mut report = CompatibilityReport::new("test-plugin".to_string());
         assert!(report.is_compatible());
@@ -1948,10 +2047,11 @@ mod tests {
         };
 
         // 手动添加配置以测试并发保护
-        manager.plugin_configs.write().unwrap().insert(
-            "test-plugin".to_string(),
-            config
-        );
+        manager
+            .plugin_configs
+            .write()
+            .unwrap()
+            .insert("test-plugin".to_string(), config);
 
         // 第一次尝试重载应该失败（因为插件文件不存在）
         let result = manager.reload("test-plugin");
@@ -1992,10 +2092,11 @@ mod tests {
         };
 
         // 手动添加配置
-        manager.plugin_configs.write().unwrap().insert(
-            "test-plugin".to_string(),
-            config
-        );
+        manager
+            .plugin_configs
+            .write()
+            .unwrap()
+            .insert("test-plugin".to_string(), config);
 
         // 测试有配置但无插件实例的情况（应该通过，因为原来就没有插件）
         // 这里我们通过 reload 方法间接测试，因为 reload 内部会调用 verify_rollback_integrity

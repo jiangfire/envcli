@@ -24,11 +24,12 @@ pub use types::{Config, EnvSource, EnvVar, OutputFormat};
 
 // 插件系统快捷访问
 pub use plugin::{
-    create_default_manager, GlobalSettings, HookChainBuilder, HookContext, HookDispatcher,
-    HookExecutor, HookErrorHandler, HookPriority, HookResult, HookStats, HookType, LoaderFactory,
-    Plugin, PluginConfig, PluginConfigFormatter, PluginConfigManager, PluginError, PluginInfo,
-    PluginManager, PluginManagerStats, PluginMetadata, PluginRequest, PluginResponse, PluginStatus,
-    PluginType, PluginLoader, Platform, PLUGIN_SDK_VERSION, PLUGIN_SYSTEM_VERSION,
+    GlobalSettings, HookChainBuilder, HookContext, HookDispatcher, HookErrorHandler, HookExecutor,
+    HookPriority, HookResult, HookStats, HookType, LoaderFactory, PLUGIN_SDK_VERSION,
+    PLUGIN_SYSTEM_VERSION, Platform, Plugin, PluginConfig, PluginConfigFormatter,
+    PluginConfigManager, PluginError, PluginInfo, PluginLoader, PluginManager, PluginManagerStats,
+    PluginMetadata, PluginRequest, PluginResponse, PluginStatus, PluginType,
+    create_default_manager,
 };
 
 // 宏导出 (使用 #[macro_export] 定义的宏在 crate 根自动可用)

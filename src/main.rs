@@ -7,7 +7,9 @@
 
 use clap::Parser;
 use envcli::{
-    cli::{self, CacheCommands, Cli, Commands, PluginCommands, PluginConfigCommands, TemplateCommands},
+    cli::{
+        self, CacheCommands, Cli, Commands, PluginCommands, PluginConfigCommands, TemplateCommands,
+    },
     core::Store,
     error::{EnvError, Result},
     plugin::{HookContext, HookType, PluginManager, SignatureAlgorithm},
@@ -71,9 +73,10 @@ fn run_command(command: &Commands, store: Store, verbose: bool) -> Result<()> {
     // 根据命令类型分发到对应的处理函数
     let result = match &command {
         // 读取类命令
-        Commands::Get { .. } | Commands::List { .. } | Commands::Export { .. } | Commands::Status => {
-            handle_read_commands(command, &store, &merged_env, verbose)
-        }
+        Commands::Get { .. }
+        | Commands::List { .. }
+        | Commands::Export { .. }
+        | Commands::Status => handle_read_commands(command, &store, &merged_env, verbose),
 
         // 写入类命令
         Commands::Set { .. } | Commands::Unset { .. } | Commands::Import { .. } => {
@@ -81,34 +84,36 @@ fn run_command(command: &Commands, store: Store, verbose: bool) -> Result<()> {
         }
 
         // 插件类命令
-        Commands::Plugin { command: plugin_cmd } => {
-            handle_plugin_commands(plugin_cmd, verbose)
-        }
+        Commands::Plugin {
+            command: plugin_cmd,
+        } => handle_plugin_commands(plugin_cmd, verbose),
 
         // 加密类命令
-        Commands::Encrypt { .. } | Commands::Decrypt { .. } | Commands::SetEncrypt { .. } | Commands::CheckSops => {
-            handle_encrypt_commands(command, &store, verbose)
-        }
+        Commands::Encrypt { .. }
+        | Commands::Decrypt { .. }
+        | Commands::SetEncrypt { .. }
+        | Commands::CheckSops => handle_encrypt_commands(command, &store, verbose),
 
         // 系统类命令
-        Commands::SystemSet { .. } | Commands::SystemUnset { .. } | Commands::Doctor | Commands::Run { .. } => {
+        Commands::SystemSet { .. }
+        | Commands::SystemUnset { .. }
+        | Commands::Doctor
+        | Commands::Run { .. } => {
             handle_system_commands(command, &store, &plugin_manager, &merged_env, verbose)
         }
 
         // 配置类命令
-        Commands::Config { command: config_cmd } => {
-            handle_config_commands(config_cmd, verbose)
-        }
+        Commands::Config {
+            command: config_cmd,
+        } => handle_config_commands(config_cmd, verbose),
 
         // 模板类命令
-        Commands::Template { command: template_cmd } => {
-            handle_template_commands(template_cmd, verbose)
-        }
+        Commands::Template {
+            command: template_cmd,
+        } => handle_template_commands(template_cmd, verbose),
 
         // 缓存类命令
-        Commands::Cache { command: cache_cmd } => {
-            handle_cache_commands(cache_cmd, &store, verbose)
-        }
+        Commands::Cache { command: cache_cmd } => handle_cache_commands(cache_cmd, &store, verbose),
     };
 
     // 执行命令后的钩子
@@ -210,7 +215,12 @@ fn diagnose(store: &Store, verbose: bool) -> Result<()> {
     // 2. 检查层级文件状态
     println!("📄 2. 配置文件状态");
     let mut file_count = 0;
-    for source in [EnvSource::System, EnvSource::User, EnvSource::Project, EnvSource::Local] {
+    for source in [
+        EnvSource::System,
+        EnvSource::User,
+        EnvSource::Project,
+        EnvSource::Local,
+    ] {
         let path = match utils::paths::get_layer_path(&source) {
             Ok(p) => p,
             Err(e) => {
@@ -240,11 +250,14 @@ fn diagnose(store: &Store, verbose: bool) -> Result<()> {
 
                     // 检查文件格式问题
                     if verbose {
-                        let invalid_lines: Vec<_> = content.lines()
+                        let invalid_lines: Vec<_> = content
+                            .lines()
                             .enumerate()
                             .filter(|(_, line)| {
                                 let trimmed = line.trim();
-                                !trimmed.is_empty() && !trimmed.starts_with('#') && !trimmed.contains('=')
+                                !trimmed.is_empty()
+                                    && !trimmed.starts_with('#')
+                                    && !trimmed.contains('=')
                             })
                             .map(|(i, line)| (i + 1, line))
                             .collect();
@@ -359,15 +372,24 @@ fn diagnose(store: &Store, verbose: bool) -> Result<()> {
     if plugin_stats.loaded_plugins > 0 && verbose {
         println!("   详细信息:");
         for plugin in plugin_manager.list_plugins(true) {
-            println!("     - {} (v{})", plugin.metadata.id, plugin.metadata.version);
+            println!(
+                "     - {} (v{})",
+                plugin.metadata.id, plugin.metadata.version
+            );
         }
     }
     println!();
 
     // 6. 运行环境检查
     println!("🔧 6. 运行环境");
-    println!("   当前工作目录: {:?}", std::env::current_dir().unwrap_or_default());
-    println!("   可执行文件路径: {:?}", std::env::current_exe().unwrap_or_default());
+    println!(
+        "   当前工作目录: {:?}",
+        std::env::current_dir().unwrap_or_default()
+    );
+    println!(
+        "   可执行文件路径: {:?}",
+        std::env::current_exe().unwrap_or_default()
+    );
 
     // 检查 PATH
     if let Some(path_var) = std::env::var_os("PATH") {
@@ -405,15 +427,11 @@ fn diagnose(store: &Store, verbose: bool) -> Result<()> {
 /// 处理配置管理命令
 fn handle_config_commands(command: &cli::ConfigCommands, verbose: bool) -> Result<()> {
     match command {
-        cli::ConfigCommands::Validate { verbose: verbose_flag } => {
-            validate_config(*verbose_flag || verbose)
-        }
-        cli::ConfigCommands::Init { force } => {
-            init_config_files(*force)
-        }
-        cli::ConfigCommands::Info => {
-            show_config_info()
-        }
+        cli::ConfigCommands::Validate {
+            verbose: verbose_flag,
+        } => validate_config(*verbose_flag || verbose),
+        cli::ConfigCommands::Init { force } => init_config_files(*force),
+        cli::ConfigCommands::Info => show_config_info(),
     }
 }
 
@@ -425,7 +443,12 @@ fn validate_config(verbose: bool) -> Result<()> {
     let mut warnings = 0;
 
     // 检查所有层级的配置文件
-    for source in [EnvSource::System, EnvSource::User, EnvSource::Project, EnvSource::Local] {
+    for source in [
+        EnvSource::System,
+        EnvSource::User,
+        EnvSource::Project,
+        EnvSource::Local,
+    ] {
         let path = utils::paths::get_layer_path(&source)?;
 
         if utils::paths::file_exists(&path) {
@@ -491,7 +514,9 @@ fn validate_config(verbose: bool) -> Result<()> {
                 println!("   📋 变量列表:");
                 for line in content.lines() {
                     let trimmed = line.trim();
-                    if !trimmed.is_empty() && !trimmed.starts_with('#') && trimmed.contains('=')
+                    if !trimmed.is_empty()
+                        && !trimmed.starts_with('#')
+                        && trimmed.contains('=')
                         && let Some(eq_pos) = trimmed.find('=')
                     {
                         let key = trimmed[..eq_pos].trim();
@@ -594,13 +619,24 @@ fn show_config_info() -> Result<()> {
 
     // 各层级文件状态
     println!("层级文件:");
-    for source in [EnvSource::System, EnvSource::User, EnvSource::Project, EnvSource::Local] {
+    for source in [
+        EnvSource::System,
+        EnvSource::User,
+        EnvSource::Project,
+        EnvSource::Local,
+    ] {
         let path = utils::paths::get_layer_path(&source)?;
         if utils::paths::file_exists(&path) {
             let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
             let content = utils::paths::read_file(&path).unwrap_or_default();
             let lines = content.lines().count();
-            println!("  {}: {} ({} bytes, {} lines)", source, path.display(), size, lines);
+            println!(
+                "  {}: {} ({} bytes, {} lines)",
+                source,
+                path.display(),
+                size,
+                lines
+            );
         } else {
             println!("  {}: 不存在", source);
         }
@@ -734,10 +770,7 @@ fn execute_pre_command_hooks(
 }
 
 /// 执行命令后的插件钩子（提取重复逻辑）
-fn execute_post_command_hooks(
-    command_name: &str,
-    plugin_manager: &PluginManager,
-) -> Result<()> {
+fn execute_post_command_hooks(command_name: &str, plugin_manager: &PluginManager) -> Result<()> {
     let context = create_hook_context(command_name);
     let _ = execute_plugin_hooks(HookType::PostCommand, &context, plugin_manager)?;
     Ok(())
@@ -869,9 +902,7 @@ fn handle_read_commands(
 
         Commands::Status => show_status(store, verbose),
 
-        _ => Err(EnvError::InvalidArgument(
-            "非读取类命令".to_string(),
-        )),
+        _ => Err(EnvError::InvalidArgument("非读取类命令".to_string())),
     }
 }
 
@@ -909,19 +940,17 @@ fn handle_write_commands(
             handle_result(Ok(()), verbose, Some(&format!("成功导入 {} 个变量", count)))
         }
 
-        _ => Err(EnvError::InvalidArgument(
-            "非写入类命令".to_string(),
-        )),
+        _ => Err(EnvError::InvalidArgument("非写入类命令".to_string())),
     }
 }
 
 /// 处理插件类命令
-fn handle_plugin_commands(
-    command: &PluginCommands,
-    verbose: bool,
-) -> Result<()> {
+fn handle_plugin_commands(command: &PluginCommands, verbose: bool) -> Result<()> {
     match command {
-        PluginCommands::List { verbose: list_verbose, show_disabled } => {
+        PluginCommands::List {
+            verbose: list_verbose,
+            show_disabled,
+        } => {
             let manager = PluginManager::new()?;
             let plugins = manager.list_plugins(*show_disabled);
 
@@ -931,8 +960,15 @@ fn handle_plugin_commands(
             }
 
             for plugin_info in plugins {
-                let status = if plugin_info.metadata.enabled { "✓" } else { "✗" };
-                println!("{} {} ({})", status, plugin_info.metadata.name, plugin_info.metadata.id);
+                let status = if plugin_info.metadata.enabled {
+                    "✓"
+                } else {
+                    "✗"
+                };
+                println!(
+                    "{} {} ({})",
+                    status, plugin_info.metadata.name, plugin_info.metadata.id
+                );
 
                 if *list_verbose {
                     println!("  版本: {}", plugin_info.metadata.version);
@@ -971,7 +1007,14 @@ fn handle_plugin_commands(
             println!("名称: {}", plugin_info.metadata.name);
             println!("版本: {}", plugin_info.metadata.version);
             println!("类型: {:?}", plugin_info.metadata.plugin_type);
-            println!("状态: {}", if plugin_info.metadata.enabled { "已启用" } else { "已禁用" });
+            println!(
+                "状态: {}",
+                if plugin_info.metadata.enabled {
+                    "已启用"
+                } else {
+                    "已禁用"
+                }
+            );
 
             if let Some(desc) = &plugin_info.metadata.description {
                 println!("描述: {}", desc);
@@ -1006,7 +1049,10 @@ fn handle_plugin_commands(
                         .as_ref()
                         .map(|d| format!(" (默认: {})", d))
                         .unwrap_or_default();
-                    println!("  {} ({:?}): {}{}", field.name, field.field_type, required, default);
+                    println!(
+                        "  {} ({:?}): {}{}",
+                        field.name, field.field_type, required, default
+                    );
                     if let Some(desc) = &field.description {
                         println!("    {}", desc);
                     }
@@ -1091,7 +1137,14 @@ fn handle_plugin_commands(
                         .ok_or_else(|| EnvError::PluginNotFound(id.clone()))?;
 
                     println!("插件: {}", info.metadata.name);
-                    println!("状态: {}", if info.metadata.enabled { "已启用" } else { "已禁用" });
+                    println!(
+                        "状态: {}",
+                        if info.metadata.enabled {
+                            "已启用"
+                        } else {
+                            "已禁用"
+                        }
+                    );
                     println!("已加载: {}", manager.is_loaded(id));
 
                     let stats = manager.get_stats();
@@ -1104,7 +1157,10 @@ fn handle_plugin_commands(
                     let plugins = manager.list_plugins(true);
 
                     println!("插件总数: {}", plugins.len());
-                    println!("已启用: {}", plugins.iter().filter(|p| p.metadata.enabled).count());
+                    println!(
+                        "已启用: {}",
+                        plugins.iter().filter(|p| p.metadata.enabled).count()
+                    );
                     println!("已加载: {}", stats.loaded_plugins);
                     println!("总执行次数: {}", stats.total_executions);
                     println!("错误次数: {}", stats.total_errors);
@@ -1115,7 +1171,11 @@ fn handle_plugin_commands(
                             println!(
                                 "  {}: {} ({}), {}",
                                 plugin.metadata.name,
-                                if plugin.metadata.enabled { "启用" } else { "禁用" },
+                                if plugin.metadata.enabled {
+                                    "启用"
+                                } else {
+                                    "禁用"
+                                },
                                 if manager.is_loaded(&plugin.metadata.id) {
                                     "已加载"
                                 } else {
@@ -1132,7 +1192,11 @@ fn handle_plugin_commands(
 
         PluginCommands::Config(config_cmd) => match config_cmd {
             // 设置配置（简化：仅显示提示）
-            PluginConfigCommands::Set { plugin_id, key, value } => {
+            PluginConfigCommands::Set {
+                plugin_id,
+                key,
+                value,
+            } => {
                 if verbose {
                     println!("⚠️  配置管理功能暂未完全实现");
                     println!("   插件: {}, 配置: {} = {}", plugin_id, key, value);
@@ -1174,31 +1238,38 @@ fn handle_plugin_commands(
             }
         },
 
-        PluginCommands::GenerateKeyPair => {
-            match PluginManager::generate_key_pair() {
-                Ok((private_key, public_key)) => {
-                    println!("✓ 密钥对生成成功");
-                    println!();
-                    println!("私钥 (请安全保存):");
-                    println!("{}", private_key);
-                    println!();
-                    println!("公钥:");
-                    println!("{}", public_key);
-                    println!();
-                    println!("指纹: {}", PluginManager::fingerprint(&public_key));
-                    Ok(())
-                }
-                Err(e) => Err(EnvError::PluginExecutionFailed(e.to_string())),
+        PluginCommands::GenerateKeyPair => match PluginManager::generate_key_pair() {
+            Ok((private_key, public_key)) => {
+                println!("✓ 密钥对生成成功");
+                println!();
+                println!("私钥 (请安全保存):");
+                println!("{}", private_key);
+                println!();
+                println!("公钥:");
+                println!("{}", public_key);
+                println!();
+                println!("指纹: {}", PluginManager::fingerprint(&public_key));
+                Ok(())
             }
-        }
+            Err(e) => Err(EnvError::PluginExecutionFailed(e.to_string())),
+        },
 
-        PluginCommands::Sign { plugin_id, key, algorithm, output } => {
+        PluginCommands::Sign {
+            plugin_id,
+            key,
+            algorithm,
+            output,
+        } => {
             let manager = PluginManager::new()?;
 
             // 解析算法
             let sig_algorithm = match algorithm.as_str() {
                 "Ed25519" => SignatureAlgorithm::Ed25519,
-                _ => return Err(EnvError::PluginExecutionFailed("不支持的签名算法，仅支持 Ed25519".to_string())),
+                _ => {
+                    return Err(EnvError::PluginExecutionFailed(
+                        "不支持的签名算法，仅支持 Ed25519".to_string(),
+                    ));
+                }
             };
 
             match manager.sign_plugin(plugin_id, key, sig_algorithm) {
@@ -1207,8 +1278,7 @@ fn handle_plugin_commands(
                         .map_err(|e| EnvError::PluginExecutionFailed(e.to_string()))?;
 
                     if let Some(output_path) = output {
-                        std::fs::write(output_path, &signature_json)
-                            .map_err(EnvError::Io)?;
+                        std::fs::write(output_path, &signature_json).map_err(EnvError::Io)?;
                         println!("✓ 签名已保存到 {}", output_path);
                     } else {
                         println!("✓ 签名生成成功:");
@@ -1220,7 +1290,10 @@ fn handle_plugin_commands(
             }
         }
 
-        PluginCommands::Verify { plugin_id, trust_unsigned } => {
+        PluginCommands::Verify {
+            plugin_id,
+            trust_unsigned,
+        } => {
             let manager = PluginManager::new()?;
 
             match manager.verify_plugin_signature(plugin_id, *trust_unsigned) {
@@ -1384,11 +1457,7 @@ fn handle_plugin_commands(
 }
 
 /// 处理加密类命令 (Encrypt, Decrypt, SetEncrypt, CheckSops)
-fn handle_encrypt_commands(
-    command: &Commands,
-    store: &Store,
-    verbose: bool,
-) -> Result<()> {
+fn handle_encrypt_commands(command: &Commands, store: &Store, verbose: bool) -> Result<()> {
     match command {
         Commands::Encrypt { key, value, target } => {
             let target_source = cli::validate_writable_source(target)?;
@@ -1434,7 +1503,11 @@ fn handle_encrypt_commands(
             Ok(())
         }
 
-        Commands::SetEncrypt { key, value, encrypt } => {
+        Commands::SetEncrypt {
+            key,
+            value,
+            encrypt,
+        } => {
             if *encrypt {
                 store.check_sops()?;
                 store.set_encrypted(key.clone(), value.to_string())?;
@@ -1458,9 +1531,7 @@ fn handle_encrypt_commands(
             Ok(())
         }
 
-        _ => Err(EnvError::InvalidArgument(
-            "非加密类命令".to_string(),
-        )),
+        _ => Err(EnvError::InvalidArgument("非加密类命令".to_string())),
     }
 }
 
@@ -1487,26 +1558,29 @@ fn handle_system_commands(
 
         Commands::Doctor => diagnose(store, verbose),
 
-        Commands::Run { env, from_file, command: cmd } => {
+        Commands::Run {
+            env,
+            from_file,
+            command: cmd,
+        } => {
             // Run 命令需要特殊处理，因为它会直接退出进程
             handle_run_command(env, from_file, cmd, store, plugin_manager, verbose)
         }
 
-        _ => Err(EnvError::InvalidArgument(
-            "非系统类命令".to_string(),
-        )),
+        _ => Err(EnvError::InvalidArgument("非系统类命令".to_string())),
     }
 }
 
 /// 处理模板类命令
-fn handle_template_commands(
-    command: &TemplateCommands,
-    verbose: bool,
-) -> Result<()> {
+fn handle_template_commands(command: &TemplateCommands, verbose: bool) -> Result<()> {
     let engine = template::TemplateEngine::new()?;
 
     match command {
-        TemplateCommands::Create { name, vars, inherits } => {
+        TemplateCommands::Create {
+            name,
+            vars,
+            inherits,
+        } => {
             let template = engine.create_template(name, vars, inherits)?;
 
             if verbose {
@@ -1545,7 +1619,9 @@ fn handle_template_commands(
             Ok(())
         }
 
-        TemplateCommands::List { verbose: list_verbose } => {
+        TemplateCommands::List {
+            verbose: list_verbose,
+        } => {
             let templates = engine.list_templates()?;
 
             if templates.is_empty() {
@@ -1578,7 +1654,12 @@ fn handle_template_commands(
             Ok(())
         }
 
-        TemplateCommands::Render { name, var, interactive, output } => {
+        TemplateCommands::Render {
+            name,
+            var,
+            interactive,
+            output,
+        } => {
             // 解析变量参数
             let mut variables = HashMap::new();
             for v in var {
@@ -1597,16 +1678,16 @@ fn handle_template_commands(
                         if var_def.required {
                             println!("请输入必需变量 {}: ", var_def.name);
                             let mut input = String::new();
-                            std::io::stdin().read_line(&mut input).map_err(|e| {
-                                EnvError::Io(std::io::Error::other(e))
-                            })?;
+                            std::io::stdin()
+                                .read_line(&mut input)
+                                .map_err(|e| EnvError::Io(std::io::Error::other(e)))?;
                             variables.insert(var_def.name.clone(), input.trim().to_string());
                         } else if let Some(default) = &var_def.default {
                             println!("变量 {} (默认: {}): ", var_def.name, default);
                             let mut input = String::new();
-                            std::io::stdin().read_line(&mut input).map_err(|e| {
-                                EnvError::Io(std::io::Error::other(e))
-                            })?;
+                            std::io::stdin()
+                                .read_line(&mut input)
+                                .map_err(|e| EnvError::Io(std::io::Error::other(e)))?;
                             let value = input.trim();
                             if !value.is_empty() {
                                 variables.insert(var_def.name.clone(), value.to_string());
@@ -1666,7 +1747,10 @@ fn handle_cache_commands(command: &CacheCommands, store: &Store, verbose: bool) 
             if sys_cached {
                 println!("  状态: ✓ 已缓存");
                 println!("  存在时间: {:?}", sys_age);
-                println!("  TTL 剩余: {:?}", std::time::Duration::from_secs(60).saturating_sub(sys_age));
+                println!(
+                    "  TTL 剩余: {:?}",
+                    std::time::Duration::from_secs(60).saturating_sub(sys_age)
+                );
             } else {
                 println!("  状态: ✗ 未缓存");
             }

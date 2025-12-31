@@ -236,9 +236,7 @@ mod tests {
             name = "TestPlugin",
             version = "1.0.0",
             hooks = [HookType::PreCommand],
-            on_pre_command = |_context: &HookContext| {
-                Ok(HookResult::default())
-            },
+            on_pre_command = |_context: &HookContext| { Ok(HookResult::default()) },
         );
 
         let plugin = AutoPlugin::default();

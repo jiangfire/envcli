@@ -107,7 +107,11 @@ mod windows_registry_tests {
                 // 否则应该匹配进程的值
                 // 这里我们只验证变量存在且非空
                 let result_value_str: &String = result_value;
-                assert!(!result_value_str.is_empty(), "合并后的变量 {} 不应为空", key);
+                assert!(
+                    !result_value_str.is_empty(),
+                    "合并后的变量 {} 不应为空",
+                    key
+                );
             }
         }
     }
@@ -175,7 +179,11 @@ mod performance_tests {
         let duration = start.elapsed();
 
         // 10次调用应该在 100ms 内完成
-        assert!(duration.as_millis() < 100, "性能测试失败: {}ms", duration.as_millis());
+        assert!(
+            duration.as_millis() < 100,
+            "性能测试失败: {}ms",
+            duration.as_millis()
+        );
     }
 }
 

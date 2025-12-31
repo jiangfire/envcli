@@ -23,7 +23,8 @@ impl SystemEnvCache {
 }
 
 /// 全局缓存实例（使用 OnceLock 确保线程安全）
-static SYSTEM_ENV_CACHE: std::sync::OnceLock<Mutex<Option<SystemEnvCache>>> = std::sync::OnceLock::new();
+static SYSTEM_ENV_CACHE: std::sync::OnceLock<Mutex<Option<SystemEnvCache>>> =
+    std::sync::OnceLock::new();
 
 /// 实际读取系统环境的内部函数（无缓存）
 fn read_system_env_from_source() -> Result<HashMap<String, String>> {
@@ -75,7 +76,9 @@ pub fn get_system_env() -> Result<HashMap<String, String>> {
     let mut cache_opt = cache_guard.lock().unwrap();
 
     // 检查缓存有效性
-    if let Some(cache) = &*cache_opt && cache.is_valid() {
+    if let Some(cache) = &*cache_opt
+        && cache.is_valid()
+    {
         return Ok(cache.env.clone());
     }
 
@@ -187,7 +190,11 @@ pub fn read_file(path: &Path) -> Result<String> {
         return Err(EnvError::FileNotFound(path.to_path_buf()));
     }
     std::fs::read_to_string(path).map_err(|e| {
-        EnvError::Io(std::io::Error::other(format!("读取文件 {} 失败: {}", path.display(), e)))
+        EnvError::Io(std::io::Error::other(format!(
+            "读取文件 {} 失败: {}",
+            path.display(),
+            e
+        )))
     })
 }
 

@@ -68,8 +68,8 @@ impl PluginConfigManager {
         }
 
         let content = paths::read_file(path)?;
-        let global_config: PluginGlobalConfig = toml::from_str(&content)
-            .map_err(|e| EnvError::PluginConfigError(e.to_string()))?;
+        let global_config: PluginGlobalConfig =
+            toml::from_str(&content).map_err(|e| EnvError::PluginConfigError(e.to_string()))?;
 
         Ok(Self {
             config_path: path.to_path_buf(),
@@ -91,21 +91,22 @@ impl PluginConfigManager {
     pub fn set_sandbox_base(&mut self, base_path: PathBuf) -> Result<()> {
         // 验证路径存在且是目录
         if !base_path.exists() {
-            return Err(EnvError::PluginConfigError(
-                format!("沙箱基础路径不存在: {}", base_path.display())
-            ));
+            return Err(EnvError::PluginConfigError(format!(
+                "沙箱基础路径不存在: {}",
+                base_path.display()
+            )));
         }
         if !base_path.is_dir() {
-            return Err(EnvError::PluginConfigError(
-                format!("沙箱基础路径必须是目录: {}", base_path.display())
-            ));
+            return Err(EnvError::PluginConfigError(format!(
+                "沙箱基础路径必须是目录: {}",
+                base_path.display()
+            )));
         }
 
         // 标准化路径
-        let canonical_base = base_path.canonicalize()
-            .map_err(|e| EnvError::PluginConfigError(
-                format!("无法解析沙箱路径 {}: {}", base_path.display(), e)
-            ))?;
+        let canonical_base = base_path.canonicalize().map_err(|e| {
+            EnvError::PluginConfigError(format!("无法解析沙箱路径 {}: {}", base_path.display(), e))
+        })?;
 
         self.sandbox_base = Some(canonical_base);
         Ok(())
@@ -155,7 +156,9 @@ impl PluginConfigManager {
     }
 
     /// 获取全局设置（可变引用，用于修改）
-    pub fn get_global_settings_mut(&mut self) -> std::sync::RwLockWriteGuard<'_, PluginGlobalConfig> {
+    pub fn get_global_settings_mut(
+        &mut self,
+    ) -> std::sync::RwLockWriteGuard<'_, PluginGlobalConfig> {
         self.global_config.write().unwrap()
     }
 
@@ -184,7 +187,10 @@ impl PluginConfigManager {
     /// 获取可变插件配置引用
     /// 注意：由于使用 RwLock，此方法返回整个配置的写锁保护器
     /// 调用者需要通过 guard.plugins 访问具体插件
-    pub fn get_plugin_config_mut(&mut self, plugin_id: &str) -> Option<std::sync::RwLockWriteGuard<'_, PluginGlobalConfig>> {
+    pub fn get_plugin_config_mut(
+        &mut self,
+        plugin_id: &str,
+    ) -> Option<std::sync::RwLockWriteGuard<'_, PluginGlobalConfig>> {
         let guard = self.global_config.write().unwrap();
         if guard.plugins.iter().any(|p| p.plugin_id == plugin_id) {
             Some(guard)
@@ -207,7 +213,11 @@ impl PluginConfigManager {
                 timeout: Some(default_timeout),
                 env: HashMap::new(),
             };
-            self.global_config.write().unwrap().plugins.push(config.clone());
+            self.global_config
+                .write()
+                .unwrap()
+                .plugins
+                .push(config.clone());
             config
         }
     }
@@ -229,12 +239,7 @@ impl PluginConfigManager {
     }
 
     /// 设置插件配置项
-    pub fn set_plugin_setting(
-        &mut self,
-        plugin_id: &str,
-        key: &str,
-        value: &str,
-    ) -> Result<()> {
+    pub fn set_plugin_setting(&mut self, plugin_id: &str, key: &str, value: &str) -> Result<()> {
         let mut config = self.get_or_create_plugin_config(plugin_id);
         config.settings.insert(key.to_string(), value.to_string());
         self.set_plugin_config(config)
@@ -251,11 +256,7 @@ impl PluginConfigManager {
     /// 启用插件
     pub fn enable_plugin(&mut self, plugin_id: &str) -> Result<()> {
         let mut guard = self.global_config.write().unwrap();
-        if let Some(config) = guard
-            .plugins
-            .iter_mut()
-            .find(|p| p.plugin_id == plugin_id)
-        {
+        if let Some(config) = guard.plugins.iter_mut().find(|p| p.plugin_id == plugin_id) {
             config.enabled = true;
             self.save()
         } else {
@@ -266,11 +267,7 @@ impl PluginConfigManager {
     /// 禁用插件
     pub fn disable_plugin(&mut self, plugin_id: &str) -> Result<()> {
         let mut guard = self.global_config.write().unwrap();
-        if let Some(config) = guard
-            .plugins
-            .iter_mut()
-            .find(|p| p.plugin_id == plugin_id)
-        {
+        if let Some(config) = guard.plugins.iter_mut().find(|p| p.plugin_id == plugin_id) {
             config.enabled = false;
             self.save()
         } else {
@@ -281,11 +278,7 @@ impl PluginConfigManager {
     /// 移除插件配置
     pub fn remove_plugin(&mut self, plugin_id: &str) -> Result<()> {
         let mut guard = self.global_config.write().unwrap();
-        if let Some(index) = guard
-            .plugins
-            .iter()
-            .position(|p| p.plugin_id == plugin_id)
-        {
+        if let Some(index) = guard.plugins.iter().position(|p| p.plugin_id == plugin_id) {
             guard.plugins.remove(index);
             self.save()
         } else {
@@ -316,12 +309,7 @@ impl PluginConfigManager {
     }
 
     /// 设置插件环境变量
-    pub fn set_plugin_env(
-        &mut self,
-        plugin_id: &str,
-        key: &str,
-        value: &str,
-    ) -> Result<()> {
+    pub fn set_plugin_env(&mut self, plugin_id: &str, key: &str, value: &str) -> Result<()> {
         let mut config = self.get_or_create_plugin_config(plugin_id);
         config.env.insert(key.to_string(), value.to_string());
         self.set_plugin_config(config)
@@ -360,9 +348,7 @@ impl PluginConfigManager {
         // 验证配置模式（如果存在）
         if let Some(schema) = &metadata.config_schema {
             for field in &schema.fields {
-                if field.required
-                    && !config.settings.contains_key(&field.name)
-                {
+                if field.required && !config.settings.contains_key(&field.name) {
                     return Err(EnvError::PluginConfigError(format!(
                         "缺少必需配置项: {}",
                         field.name
@@ -448,7 +434,10 @@ impl PluginConfigFormatter {
         let mut output = String::new();
 
         output.push_str(&format!("插件 ID: {}\n", config.plugin_id));
-        output.push_str(&format!("启用状态: {}\n", if config.enabled { "✓" } else { "✗" }));
+        output.push_str(&format!(
+            "启用状态: {}\n",
+            if config.enabled { "✓" } else { "✗" }
+        ));
 
         if verbose {
             if let Some(path) = &config.path {
@@ -479,21 +468,19 @@ impl PluginConfigFormatter {
 
     /// 格式化为 JSON
     pub fn to_json(config: &PluginConfig) -> Result<String> {
-        serde_json::to_string_pretty(config)
-            .map_err(|e| EnvError::PluginConfigError(e.to_string()))
+        serde_json::to_string_pretty(config).map_err(|e| EnvError::PluginConfigError(e.to_string()))
     }
 
     /// 格式化为 TOML
     pub fn to_toml(config: &PluginConfig) -> Result<String> {
-        toml::to_string_pretty(config)
-            .map_err(|e| EnvError::PluginConfigError(e.to_string()))
+        toml::to_string_pretty(config).map_err(|e| EnvError::PluginConfigError(e.to_string()))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plugin::types::{PluginType, Platform};
+    use crate::plugin::types::{Platform, PluginType};
 
     #[test]
     fn test_plugin_config_manager() {
@@ -517,10 +504,8 @@ mod tests {
         std::fs::write(&config_path, content).unwrap();
 
         // 验证配置可以加载
-        let loaded: PluginGlobalConfig = toml::from_str(
-            &std::fs::read_to_string(&config_path).unwrap(),
-        )
-        .unwrap();
+        let loaded: PluginGlobalConfig =
+            toml::from_str(&std::fs::read_to_string(&config_path).unwrap()).unwrap();
 
         assert_eq!(loaded.plugins.len(), 1);
         assert_eq!(loaded.plugins[0].plugin_id, "test-plugin");

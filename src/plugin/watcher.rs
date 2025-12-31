@@ -53,12 +53,12 @@ use std::time::{Duration, Instant};
 
 // 条件编译：仅在启用 notify 特性时编译自动监控相关代码
 #[cfg(feature = "notify")]
-use notify::{
-    event::{ModifyKind, EventKind},
-    RecursiveMode, Watcher as NotifyWatcher
-};
-#[cfg(feature = "notify")]
 use notify::RecommendedWatcher;
+#[cfg(feature = "notify")]
+use notify::{
+    RecursiveMode, Watcher as NotifyWatcher,
+    event::{EventKind, ModifyKind},
+};
 
 /// 自动热重载配置
 #[derive(Debug, Clone)]
@@ -151,9 +151,10 @@ impl PluginWatcher {
     pub fn watch_plugin(&self, plugin_id: &str, path: PathBuf) -> Result<(), PluginError> {
         // 验证路径存在
         if !path.exists() {
-            return Err(PluginError::LoadFailed(
-                format!("插件文件不存在: {}", path.display())
-            ));
+            return Err(PluginError::LoadFailed(format!(
+                "插件文件不存在: {}",
+                path.display()
+            )));
         }
 
         let mut paths = self.plugin_paths.lock().unwrap();
@@ -192,7 +193,8 @@ impl PluginWatcher {
         let now = Instant::now();
 
         if let Some(last_time) = *timer
-            && now.duration_since(last_time) < Duration::from_millis(self.config.debounce_ms) {
+            && now.duration_since(last_time) < Duration::from_millis(self.config.debounce_ms)
+        {
             return false; // 还在防抖期内
         }
 
@@ -220,7 +222,11 @@ impl PluginWatcher {
     fn handle_deleted(&self, path: PathBuf) -> Option<ReloadResult> {
         let plugin_id = self.find_plugin_id_by_path(&path);
         if let Some(plugin_id) = plugin_id {
-            println!("[Watcher] 插件文件被删除: {} (plugin: {})", path.display(), plugin_id);
+            println!(
+                "[Watcher] 插件文件被删除: {} (plugin: {})",
+                path.display(),
+                plugin_id
+            );
             self.unwatch_plugin(&plugin_id);
         }
         None
@@ -247,7 +253,8 @@ impl PluginWatcher {
         {
             let active = self.active_reloads.lock().unwrap();
             if let Some(last_time) = active.get(plugin_id)
-                && Instant::now().duration_since(*last_time) < Duration::from_millis(100) {
+                && Instant::now().duration_since(*last_time) < Duration::from_millis(100)
+            {
                 // 正在处理中，避免重复
                 return ReloadResult {
                     success: false,
@@ -294,7 +301,7 @@ impl PluginWatcher {
             // 注意：此验证针对旧插件，如果失败说明旧插件已被篡改，不应重试
             if self.config.verify_signature {
                 match mgr.verify_plugin_signature(plugin_id, false) {
-                    Ok(()) => {}  // 签名验证通过，继续重载
+                    Ok(()) => {} // 签名验证通过，继续重载
                     Err(e) => {
                         // 旧插件签名验证失败，直接返回失败（不重试，因为重试不会改变旧插件状态）
                         return ReloadResult {
@@ -321,7 +328,11 @@ impl PluginWatcher {
                     return ReloadResult {
                         success: true,
                         plugin_id: plugin_id.to_string(),
-                        new_plugin_id: if new_id != plugin_id { Some(new_id) } else { None },
+                        new_plugin_id: if new_id != plugin_id {
+                            Some(new_id)
+                        } else {
+                            None
+                        },
                         error: None,
                         retry_count,
                     };
@@ -375,7 +386,10 @@ impl PluginWatcher {
     /// 列出所有正在监控的插件
     pub fn list_watched_plugins(&self) -> Vec<(String, PathBuf)> {
         let paths = self.plugin_paths.lock().unwrap();
-        paths.iter().map(|(id, path)| (id.clone(), path.clone())).collect()
+        paths
+            .iter()
+            .map(|(id, path)| (id.clone(), path.clone()))
+            .collect()
     }
 
     /// 获取配置引用
@@ -399,7 +413,7 @@ impl PluginWatcher {
             let is_watching = self.is_auto_watching.lock().unwrap();
             if *is_watching {
                 return Err(PluginError::ExecutionFailed(
-                    "自动监控已在运行中".to_string()
+                    "自动监控已在运行中".to_string(),
                 ));
             }
         }
@@ -409,24 +423,23 @@ impl PluginWatcher {
 
         // 创建监控器
         let mut watcher = RecommendedWatcher::new(tx, notify::Config::default())
-            .map_err(|e| PluginError::ExecutionFailed(
-                format!("创建文件监控器失败: {}", e)
-            ))?;
+            .map_err(|e| PluginError::ExecutionFailed(format!("创建文件监控器失败: {}", e)))?;
 
         // 为所有已注册的插件启动监控
         let paths = self.plugin_paths.lock().unwrap();
         if paths.is_empty() {
             return Err(PluginError::ExecutionFailed(
-                "没有可监控的插件，请先使用 watch_plugin 注册插件".to_string()
+                "没有可监控的插件，请先使用 watch_plugin 注册插件".to_string(),
             ));
         }
 
         for (plugin_id, path) in paths.iter() {
             if let Some(parent) = path.parent() {
-                watcher.watch(parent, RecursiveMode::NonRecursive)
-                    .map_err(|e| PluginError::ExecutionFailed(
-                        format!("监控插件 {} 失败: {}", plugin_id, e)
-                    ))?;
+                watcher
+                    .watch(parent, RecursiveMode::NonRecursive)
+                    .map_err(|e| {
+                        PluginError::ExecutionFailed(format!("监控插件 {} 失败: {}", plugin_id, e))
+                    })?;
             }
         }
 
@@ -453,48 +466,63 @@ impl PluginWatcher {
                         match event.kind {
                             EventKind::Modify(ModifyKind::Data(_) | ModifyKind::Any) => {
                                 for path in &event.paths {
-                                    let plugin_id = Self::find_plugin_id_by_path_internal(
-                                        &plugin_paths, path
-                                    );
+                                    let plugin_id =
+                                        Self::find_plugin_id_by_path_internal(&plugin_paths, path);
                                     if let Some(plugin_id) = plugin_id {
-                                        println!("[Watcher] 检测到文件变更: {} (plugin: {})",
-                                            path.display(), plugin_id);
+                                        println!(
+                                            "[Watcher] 检测到文件变更: {} (plugin: {})",
+                                            path.display(),
+                                            plugin_id
+                                        );
                                         Self::handle_file_change_internal(
-                                            &manager, &config, &debounce_timer,
-                                            &active_reloads, &plugin_paths,
-                                            FileChangeEvent::Modified(path.clone())
+                                            &manager,
+                                            &config,
+                                            &debounce_timer,
+                                            &active_reloads,
+                                            &plugin_paths,
+                                            FileChangeEvent::Modified(path.clone()),
                                         );
                                     }
                                 }
                             }
                             EventKind::Create(_) => {
                                 for path in &event.paths {
-                                    let plugin_id = Self::find_plugin_id_by_path_internal(
-                                        &plugin_paths, path
-                                    );
+                                    let plugin_id =
+                                        Self::find_plugin_id_by_path_internal(&plugin_paths, path);
                                     if let Some(plugin_id) = plugin_id {
-                                        println!("[Watcher] 检测到新文件: {} (plugin: {})",
-                                            path.display(), plugin_id);
+                                        println!(
+                                            "[Watcher] 检测到新文件: {} (plugin: {})",
+                                            path.display(),
+                                            plugin_id
+                                        );
                                         Self::handle_file_change_internal(
-                                            &manager, &config, &debounce_timer,
-                                            &active_reloads, &plugin_paths,
-                                            FileChangeEvent::Created(path.clone())
+                                            &manager,
+                                            &config,
+                                            &debounce_timer,
+                                            &active_reloads,
+                                            &plugin_paths,
+                                            FileChangeEvent::Created(path.clone()),
                                         );
                                     }
                                 }
                             }
                             EventKind::Remove(_) => {
                                 for path in &event.paths {
-                                    let plugin_id = Self::find_plugin_id_by_path_internal(
-                                        &plugin_paths, path
-                                    );
+                                    let plugin_id =
+                                        Self::find_plugin_id_by_path_internal(&plugin_paths, path);
                                     if let Some(plugin_id) = plugin_id {
-                                        println!("[Watcher] 检测到文件删除: {} (plugin: {})",
-                                            path.display(), plugin_id);
+                                        println!(
+                                            "[Watcher] 检测到文件删除: {} (plugin: {})",
+                                            path.display(),
+                                            plugin_id
+                                        );
                                         Self::handle_file_change_internal(
-                                            &manager, &config, &debounce_timer,
-                                            &active_reloads, &plugin_paths,
-                                            FileChangeEvent::Deleted(path.clone())
+                                            &manager,
+                                            &config,
+                                            &debounce_timer,
+                                            &active_reloads,
+                                            &plugin_paths,
+                                            FileChangeEvent::Deleted(path.clone()),
                                         );
                                     }
                                 }
@@ -503,18 +531,23 @@ impl PluginWatcher {
                                 // 重命名事件 - 通常会触发后续的修改事件
                                 // 这里简单记录，主要依赖修改事件处理重载
                                 for path in &event.paths {
-                                    let plugin_id = Self::find_plugin_id_by_path_internal(
-                                        &plugin_paths, path
-                                    );
+                                    let plugin_id =
+                                        Self::find_plugin_id_by_path_internal(&plugin_paths, path);
                                     if let Some(plugin_id) = plugin_id {
-                                        println!("[Watcher] 检测到文件名变更: {} (plugin: {})",
-                                            path.display(), plugin_id);
+                                        println!(
+                                            "[Watcher] 检测到文件名变更: {} (plugin: {})",
+                                            path.display(),
+                                            plugin_id
+                                        );
                                         // 触发重载（如果文件仍然存在）
                                         if path.exists() {
                                             Self::handle_file_change_internal(
-                                                &manager, &config, &debounce_timer,
-                                                &active_reloads, &plugin_paths,
-                                                FileChangeEvent::Modified(path.clone())
+                                                &manager,
+                                                &config,
+                                                &debounce_timer,
+                                                &active_reloads,
+                                                &plugin_paths,
+                                                FileChangeEvent::Modified(path.clone()),
                                             );
                                         }
                                     }
@@ -548,7 +581,7 @@ impl PluginWatcher {
             let mut is_watching = self.is_auto_watching.lock().unwrap();
             if !*is_watching {
                 return Err(PluginError::ExecutionFailed(
-                    "自动监控未在运行中".to_string()
+                    "自动监控未在运行中".to_string(),
                 ));
             }
             *is_watching = false;
@@ -566,7 +599,7 @@ impl PluginWatcher {
     #[cfg(feature = "notify")]
     fn find_plugin_id_by_path_internal(
         plugin_paths: &Arc<Mutex<HashMap<String, PathBuf>>>,
-        path: &Path
+        path: &Path,
     ) -> Option<String> {
         let paths = plugin_paths.lock().unwrap();
         for (plugin_id, plugin_path) in paths.iter() {
@@ -604,7 +637,10 @@ impl PluginWatcher {
                 let plugin_id = Self::find_plugin_id_by_path_internal(plugin_paths, &path);
                 if let Some(plugin_id) = plugin_id {
                     return Some(Self::reload_plugin_with_retry_internal(
-                        manager, config, active_reloads, &plugin_id
+                        manager,
+                        config,
+                        active_reloads,
+                        &plugin_id,
                     ));
                 }
             }
@@ -615,7 +651,11 @@ impl PluginWatcher {
             FileChangeEvent::Deleted(path) => {
                 let plugin_id = Self::find_plugin_id_by_path_internal(plugin_paths, &path);
                 if let Some(plugin_id) = plugin_id {
-                    println!("[Watcher] 插件文件被删除: {} (plugin: {})", path.display(), plugin_id);
+                    println!(
+                        "[Watcher] 插件文件被删除: {} (plugin: {})",
+                        path.display(),
+                        plugin_id
+                    );
                     // 取消监控
                     let mut paths = plugin_paths.lock().unwrap();
                     paths.remove(&plugin_id);
@@ -631,7 +671,10 @@ impl PluginWatcher {
 
                     // 触发重载
                     return Some(Self::reload_plugin_with_retry_internal(
-                        manager, config, active_reloads, &plugin_id
+                        manager,
+                        config,
+                        active_reloads,
+                        &plugin_id,
                     ));
                 }
             }
@@ -703,7 +746,7 @@ impl PluginWatcher {
             // 注意：此验证针对旧插件，如果失败说明旧插件已被篡改，不应重试
             if config.verify_signature {
                 match mgr.verify_plugin_signature(plugin_id, false) {
-                    Ok(()) => {}  // 签名验证通过，继续重载
+                    Ok(()) => {} // 签名验证通过，继续重载
                     Err(e) => {
                         // 旧插件签名验证失败，直接返回失败（不重试，因为重试不会改变旧插件状态）
                         return ReloadResult {
@@ -730,7 +773,11 @@ impl PluginWatcher {
                     return ReloadResult {
                         success: true,
                         plugin_id: plugin_id.to_string(),
-                        new_plugin_id: if new_id != plugin_id { Some(new_id) } else { None },
+                        new_plugin_id: if new_id != plugin_id {
+                            Some(new_id)
+                        } else {
+                            None
+                        },
                         error: None,
                         retry_count,
                     };
@@ -904,4 +951,3 @@ mod tests {
         assert!(!config_disabled.verify_signature);
     }
 }
-

@@ -84,9 +84,7 @@ impl PathValidator {
 
         // 检查路径是否包含空字符（安全检查）
         if path.to_string_lossy().contains('\0') {
-            return Err(PluginError::LoadFailed(
-                "插件路径包含空字符".to_string(),
-            ));
+            return Err(PluginError::LoadFailed("插件路径包含空字符".to_string()));
         }
 
         Ok(())
@@ -100,7 +98,11 @@ impl PathValidator {
         })?;
 
         let base = allowed_base.canonicalize().map_err(|e| {
-            PluginError::LoadFailed(format!("无法解析基础路径 {}: {}", allowed_base.display(), e))
+            PluginError::LoadFailed(format!(
+                "无法解析基础路径 {}: {}",
+                allowed_base.display(),
+                e
+            ))
         })?;
 
         // 检查是否在基础路径下
@@ -125,9 +127,7 @@ impl ConfigValidator {
         // 验证超时
         if let Some(timeout) = config.timeout {
             if timeout == 0 {
-                return Err(PluginError::ConfigError(
-                    "超时时间不能为0".to_string(),
-                ));
+                return Err(PluginError::ConfigError("超时时间不能为0".to_string()));
             }
             if timeout > 3600 {
                 return Err(PluginError::ConfigError(
@@ -139,9 +139,7 @@ impl ConfigValidator {
         // 验证环境变量键名
         for key in config.env.keys() {
             if key.is_empty() {
-                return Err(PluginError::ConfigError(
-                    "环境变量键名不能为空".to_string(),
-                ));
+                return Err(PluginError::ConfigError("环境变量键名不能为空".to_string()));
             }
             // 检查是否包含特殊字符（可能导致注入攻击）
             if key.contains(|c: char| !c.is_ascii_alphanumeric() && c != '_') {
@@ -155,9 +153,7 @@ impl ConfigValidator {
         // 验证设置键名
         for key in config.settings.keys() {
             if key.is_empty() {
-                return Err(PluginError::ConfigError(
-                    "配置项键名不能为空".to_string(),
-                ));
+                return Err(PluginError::ConfigError("配置项键名不能为空".to_string()));
             }
         }
 
@@ -170,9 +166,7 @@ impl ConfigValidator {
     ) -> Result<(), PluginError> {
         // 验证全局设置
         if config.global.default_timeout == 0 {
-            return Err(PluginError::ConfigError(
-                "默认超时不能为0".to_string(),
-            ));
+            return Err(PluginError::ConfigError("默认超时不能为0".to_string()));
         }
 
         if config.global.default_timeout > 3600 {

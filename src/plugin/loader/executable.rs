@@ -81,7 +81,9 @@ impl ExecutablePlugin {
 
         if !response.success {
             return Err(PluginError::ExecutionFailed(
-                response.error.unwrap_or_else(|| "Unknown error".to_string()),
+                response
+                    .error
+                    .unwrap_or_else(|| "Unknown error".to_string()),
             ));
         }
 
@@ -109,10 +111,11 @@ impl Plugin for ExecutablePlugin {
         hook_type: crate::plugin::types::HookType,
         context: &HookContext,
     ) -> Result<HookResult, PluginError> {
-        let response = self.execute_plugin_action("execute_hook", Some(hook_type), Some(context))?;
-        response.result.ok_or_else(|| {
-            PluginError::ExecutionFailed("插件未返回钩子结果".to_string())
-        })
+        let response =
+            self.execute_plugin_action("execute_hook", Some(hook_type), Some(context))?;
+        response
+            .result
+            .ok_or_else(|| PluginError::ExecutionFailed("插件未返回钩子结果".to_string()))
     }
 
     fn supports_extension(&self, _extension: crate::plugin::types::ExtensionPoint) -> bool {

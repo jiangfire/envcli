@@ -111,9 +111,10 @@ impl SystemEnvWriter {
 
         if !output.status.success() {
             let error_msg = String::from_utf8_lossy(&output.stderr);
-            return Err(EnvError::SystemEnvWriteFailed(
-                format!("写入用户环境变量失败: {}", error_msg),
-            ));
+            return Err(EnvError::SystemEnvWriteFailed(format!(
+                "写入用户环境变量失败: {}",
+                error_msg
+            )));
         }
 
         Ok(())
@@ -140,9 +141,10 @@ impl SystemEnvWriter {
                     "设置机器级环境变量需要管理员权限，请以管理员身份运行".to_string(),
                 ));
             }
-            return Err(EnvError::SystemEnvWriteFailed(
-                format!("写入机器环境变量失败: {}", error_msg),
-            ));
+            return Err(EnvError::SystemEnvWriteFailed(format!(
+                "写入机器环境变量失败: {}",
+                error_msg
+            )));
         }
 
         Ok(())
@@ -169,9 +171,10 @@ impl SystemEnvWriter {
                     "删除机器级环境变量需要管理员权限".to_string(),
                 ));
             }
-            return Err(EnvError::SystemEnvWriteFailed(
-                format!("删除环境变量失败: {}", error_msg),
-            ));
+            return Err(EnvError::SystemEnvWriteFailed(format!(
+                "删除环境变量失败: {}",
+                error_msg
+            )));
         }
 
         Ok(())
@@ -259,7 +262,7 @@ impl SystemEnvWriter {
     /// 写入 shell 配置文件
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     fn write_to_shell_config(config_file: &PathBuf, key: &str, value: &str) -> Result<()> {
-        use std::fs::{read_to_string, OpenOptions};
+        use std::fs::{OpenOptions, read_to_string};
         use std::io::Write;
 
         // 读取现有内容
@@ -318,7 +321,7 @@ impl SystemEnvWriter {
     /// 从 shell 配置文件删除变量
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     fn remove_from_shell_config(config_file: &PathBuf, key: &str) -> Result<()> {
-        use std::fs::{read_to_string, OpenOptions};
+        use std::fs::{OpenOptions, read_to_string};
         use std::io::Write;
 
         let content = match read_to_string(config_file) {

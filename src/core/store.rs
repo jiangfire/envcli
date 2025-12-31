@@ -3,7 +3,7 @@
 use crate::config::format::dotenv::DotenvParser;
 use crate::config::format::encrypted_dotenv::EncryptedDotenvParser;
 use crate::error::{EnvError, Result};
-use crate::types::{Config, EncryptedEnvVar, EnvSource, EnvVar, EncryptionType};
+use crate::types::{Config, EncryptedEnvVar, EncryptionType, EnvSource, EnvVar};
 use crate::utils::encryption::SopsEncryptor;
 use crate::utils::paths::{self, file_exists, get_system_env, read_file, write_file_safe};
 use std::collections::HashMap;
@@ -21,7 +21,8 @@ struct FileCacheEntry {
 }
 
 /// 全局文件缓存（使用 RwLock 优化读多写少场景）
-static FILE_CACHE: std::sync::OnceLock<RwLock<HashMap<PathBuf, FileCacheEntry>>> = std::sync::OnceLock::new();
+static FILE_CACHE: std::sync::OnceLock<RwLock<HashMap<PathBuf, FileCacheEntry>>> =
+    std::sync::OnceLock::new();
 
 /// 获取文件缓存引用
 fn get_file_cache() -> &'static RwLock<HashMap<PathBuf, FileCacheEntry>> {
@@ -77,7 +78,8 @@ impl Store {
 
         // 尝试从缓存获取
         if let Some(cached_vars) = self.get_cached_vars(&path)? {
-            return Ok(cached_vars.iter()
+            return Ok(cached_vars
+                .iter()
                 .find(|v| v.key == key)
                 .map(|v| v.value.clone()));
         }
@@ -90,9 +92,7 @@ impl Store {
         self.update_cache(&path, vars.clone())?;
 
         // 查找目标变量
-        Ok(vars.iter()
-            .find(|v| v.key == key)
-            .map(|v| v.value.clone()))
+        Ok(vars.iter().find(|v| v.key == key).map(|v| v.value.clone()))
     }
 
     /// 从缓存获取变量列表
@@ -471,7 +471,9 @@ impl Store {
                 let env = get_system_env()?;
                 Ok(env
                     .into_iter()
-                    .map(|(k, v)| EncryptedEnvVar::new(k, v, EnvSource::System, EncryptionType::None))
+                    .map(|(k, v)| {
+                        EncryptedEnvVar::new(k, v, EnvSource::System, EncryptionType::None)
+                    })
                     .collect())
             }
             _ => {
@@ -548,7 +550,8 @@ impl Store {
     pub fn check_sops(&self) -> Result<()> {
         if !SopsEncryptor::is_available() {
             return Err(EnvError::EncryptionError(
-                "SOPS 未安装或不在 PATH 中\n请安装 SOPS: https://github.com/mozilla/sops".to_string(),
+                "SOPS 未安装或不在 PATH 中\n请安装 SOPS: https://github.com/mozilla/sops"
+                    .to_string(),
             ));
         }
         Ok(())
@@ -1356,7 +1359,8 @@ mod tests {
             }
 
             // 设置加密变量
-            let result = store.set_encrypted("TEST_SECRET".to_string(), "my_secret_value".to_string());
+            let result =
+                store.set_encrypted("TEST_SECRET".to_string(), "my_secret_value".to_string());
             assert!(result.is_ok());
 
             // 验证文件存在并包含加密内容
@@ -1387,7 +1391,9 @@ mod tests {
             }
 
             // 设置加密变量
-            store.set_encrypted("SECRET_KEY".to_string(), "secret_value_123".to_string()).unwrap();
+            store
+                .set_encrypted("SECRET_KEY".to_string(), "secret_value_123".to_string())
+                .unwrap();
 
             // 获取并解密
             let result = store.get_decrypted("SECRET_KEY").unwrap();
@@ -1413,20 +1419,30 @@ mod tests {
             }
 
             // 设置混合变量（明文和加密）
-            store.set("PLAIN_VAR".to_string(), "plain_value".to_string()).unwrap();
-            store.set_encrypted("ENCRYPTED_VAR".to_string(), "encrypted_value".to_string()).unwrap();
+            store
+                .set("PLAIN_VAR".to_string(), "plain_value".to_string())
+                .unwrap();
+            store
+                .set_encrypted("ENCRYPTED_VAR".to_string(), "encrypted_value".to_string())
+                .unwrap();
 
             // 列出加密变量
             let encrypted_vars = store.list_encrypted(Some(EnvSource::Local)).unwrap();
             assert_eq!(encrypted_vars.len(), 2);
 
             // 检查加密变量
-            let encrypted_var = encrypted_vars.iter().find(|v| v.key == "ENCRYPTED_VAR").unwrap();
+            let encrypted_var = encrypted_vars
+                .iter()
+                .find(|v| v.key == "ENCRYPTED_VAR")
+                .unwrap();
             assert!(encrypted_var.is_encrypted());
             assert_eq!(encrypted_var.encryption_type, EncryptionType::Sops);
 
             // 检查明文变量
-            let plain_var = encrypted_vars.iter().find(|v| v.key == "PLAIN_VAR").unwrap();
+            let plain_var = encrypted_vars
+                .iter()
+                .find(|v| v.key == "PLAIN_VAR")
+                .unwrap();
             assert!(!plain_var.is_encrypted());
             assert_eq!(plain_var.encryption_type, EncryptionType::None);
 
@@ -1450,10 +1466,14 @@ mod tests {
             }
 
             // 设置本地加密变量
-            store.set_encrypted("LOCAL_SECRET".to_string(), "local_value".to_string()).unwrap();
+            store
+                .set_encrypted("LOCAL_SECRET".to_string(), "local_value".to_string())
+                .unwrap();
 
             // 设置本地明文变量
-            store.set("LOCAL_PLAIN".to_string(), "local_plain_value".to_string()).unwrap();
+            store
+                .set("LOCAL_PLAIN".to_string(), "local_plain_value".to_string())
+                .unwrap();
 
             // 获取加密变量（应该自动解密）
             let result = store.get_decrypted("LOCAL_SECRET").unwrap();

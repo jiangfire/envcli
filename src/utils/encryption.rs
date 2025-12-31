@@ -169,10 +169,7 @@ impl SopsEncryptor {
 
     /// 检查 SOPS 是否可用（静态方法）
     pub fn is_available() -> bool {
-        Command::new("sops")
-            .arg("--version")
-            .output()
-            .is_ok()
+        Command::new("sops").arg("--version").output().is_ok()
     }
 
     /// 检查 SOPS 是否可用并返回详细信息（静态方法）
@@ -201,9 +198,7 @@ impl SopsEncryptor {
             return Ok("SOPS 未安装".to_string());
         }
 
-        let output = Command::new("sops")
-            .arg("--version")
-            .output()?;
+        let output = Command::new("sops").arg("--version").output()?;
 
         if output.status.success() {
             String::from_utf8(output.stdout)
@@ -254,7 +249,13 @@ impl SopsEncryptor {
 
         // 使用 SOPS 加密
         let mut output = Command::new("sops")
-            .args(["--encrypt", "--input-type", "binary", "--output-type", "binary"])
+            .args([
+                "--encrypt",
+                "--input-type",
+                "binary",
+                "--output-type",
+                "binary",
+            ])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -293,7 +294,8 @@ impl SopsEncryptor {
     pub fn decrypt(&self, encrypted: &str) -> Result<String> {
         // 1. 先检查缓存（短暂持有锁）
         if let Some(cache) = &self.cache
-            && let Some(cached) = cache.get(encrypted) {
+            && let Some(cached) = cache.get(encrypted)
+        {
             return Ok(cached);
         }
 
@@ -315,7 +317,13 @@ impl SopsEncryptor {
 
         // 2. 执行解密（不持有锁，可能耗时）
         let mut output = Command::new("sops")
-            .args(["--decrypt", "--input-type", "binary", "--output-type", "binary"])
+            .args([
+                "--decrypt",
+                "--input-type",
+                "binary",
+                "--output-type",
+                "binary",
+            ])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -488,8 +496,10 @@ mod tests {
             assert_eq!(cache.size(), 2); // 仍然保持在限制内
 
             // 验证：只有两个键存在，第三个被移除
-            let keys: Vec<String> = vec!["key1".to_string(), "key2".to_string(), "key3".to_string()];
-            let existing_keys: Vec<String> = keys.iter()
+            let keys: Vec<String> =
+                vec!["key1".to_string(), "key2".to_string(), "key3".to_string()];
+            let existing_keys: Vec<String> = keys
+                .iter()
                 .filter(|k| cache.get(k).is_some())
                 .cloned()
                 .collect();
@@ -521,8 +531,8 @@ mod tests {
     #[test]
     fn test_cache_concurrency() {
         // 测试缓存的线程安全
-        use std::thread;
         use std::sync::Arc;
+        use std::thread;
 
         let encryptor = Arc::new(SopsEncryptor::with_cache(100));
         let encryptor_clone = encryptor.clone();

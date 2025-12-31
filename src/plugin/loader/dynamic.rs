@@ -3,7 +3,7 @@
 //! 加载 Rust 动态库插件 (.so/.dll/.dylib)
 
 use crate::plugin::loader::PluginLoader;
-use crate::plugin::types::{Plugin, PluginConfig, PluginError, PluginType, CreatePluginFn};
+use crate::plugin::types::{CreatePluginFn, Plugin, PluginConfig, PluginError, PluginType};
 use libloading::{Library, Symbol};
 use std::path::Path;
 use std::sync::Arc;
@@ -46,10 +46,7 @@ impl Plugin for DynamicLibraryPlugin {
         self.plugin.execute_hook(hook_type, context)
     }
 
-    fn supports_extension(
-        &self,
-        extension: crate::plugin::types::ExtensionPoint,
-    ) -> bool {
+    fn supports_extension(&self, extension: crate::plugin::types::ExtensionPoint) -> bool {
         self.plugin.supports_extension(extension)
     }
 
@@ -82,11 +79,7 @@ impl PluginLoader for DynamicLibraryLoader {
         // 加载动态库（需要 unsafe）
         let library = unsafe {
             Library::new(path).map_err(|e| {
-                PluginError::LoadFailed(format!(
-                    "无法加载动态库 {}: {}",
-                    path.display(),
-                    e
-                ))
+                PluginError::LoadFailed(format!("无法加载动态库 {}: {}", path.display(), e))
             })?
         };
 

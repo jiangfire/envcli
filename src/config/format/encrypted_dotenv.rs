@@ -4,7 +4,7 @@
 //! 加密变量格式：KEY=ENC[SOPS:v1:...]
 
 use crate::error::{EnvError, Result};
-use crate::types::{EncryptedEnvVar, EnvSource, EncryptionType};
+use crate::types::{EncryptedEnvVar, EncryptionType, EnvSource};
 use crate::utils::encryption::SopsEncryptor;
 
 /// 加密 .env 格式解析器
