@@ -1,51 +1,118 @@
-# EnvCLI 文档中心
+# EnvCLI
 
-欢迎来到 EnvCLI 文档中心！这里包含了项目的所有技术文档、使用指南和最佳实践。
+> **跨平台环境变量管理工具** | **版本**: v0.1.0
 
 ---
 
 ## 📚 文档导航
 
-### 📊 项目概览
-**[project-overview.md](project-overview.md)** - 项目架构、功能状态、性能优化
+| 文档类型 | 文件 | 说明 |
+|----------|------|------|
+| **用户指南** | [user-guide.md](user-guide.md) | 安装、快速上手、常用命令 |
+| **开发指南** | [development-guide.md](development-guide.md) | 插件开发、架构原则、最佳实践 |
+| **变更日志** | [CHANGELOG.md](CHANGELOG.md) | 版本更新记录 |
+| **项目概览** | 本文件 | 核心特性、架构、状态 |
 
-包含：
-- 项目概述和核心特性
-- 源代码组织架构
-- 代码质量指标
-- 性能优化详情
-- 重构成果总结
+---
 
-### 📖 用户指南
-**[user-guide.md](user-guide.md)** - 完整的使用说明和快速上手
+## 🚀 核心特性
 
-包含：
-- 安装配置
-- 5分钟快速上手
-- 核心概念（层级系统）
-- 常用命令速查
-- 加密存储
-- 插件系统
-- 模板系统
-- 故障排除
-- 缓存管理
-- 最佳实践
+### 四层架构存储引擎
+```
+Local > Project > User > System
+```
+- **Local**: 项目本地配置 (`./.envcli/local.env`)
+- **Project**: 团队共享配置 (`./.envcli/project.env`)
+- **User**: 个人全局配置 (`~/.envcli/user.env`)
+- **System**: 机器全局配置 (系统环境变量)
 
-### 🔧 开发指南
-**[development-guide.md](development-guide.md)** - 插件开发和最佳实践
+### 插件系统
+- ✅ 动态库加载 (.so/.dll)
+- ✅ 外部可执行插件
+- ✅ Shell/Python 脚本
+- ✅ Ed25519 签名验证
+- ✅ 热重载监控 (500ms 防抖)
+- ✅ 钩子系统 (PreCommand/PostCommand/Error/PreSet/PostGet)
 
-包含：
-- 代码架构原则（KISS/DRY/LOD）
-- 插件开发完整指南
-- 安全最佳实践
-- 配置管理策略
-- 模板系统规范
-- 团队协作流程
-- 性能优化技巧
-- 测试与质量
+### 模板系统
+- ✅ `{{VAR}}` 语法
+- ✅ 默认值 `{{VAR|default}}`
+- ✅ 多层继承
+- ✅ 循环依赖检测
 
-### 📈 项目管理
-**[CHANGELOG.md](CHANGELOG.md)** - 版本更新记录
+### 安全特性
+- ✅ SOPS 集成 (Age/GPG)
+- ✅ 加密存储
+- ✅ 签名验证
+- ✅ 权限控制
+
+### 性能优化
+- ✅ 系统环境缓存 (60秒 TTL)
+- ✅ 文件内容缓存 (基于修改时间)
+- ✅ 环境变量合并优化 (4次→1次)
+- ✅ 80-90% I/O 性能提升
+
+---
+
+## 🏗️ 架构概览
+
+### 源代码组织
+```
+src/
+├── main.rs                    # 主程序入口 (1724行)
+│   ├── main()                 # 入口函数 (50行)
+│   ├── run_command()          # 命令路由 (120行)
+│   ├── 8个命令分组处理函数     # 职责分离
+│   └── 27个辅助函数           # DRY原则
+├── cli.rs                    # CLI 参数解析
+├── types.rs                  # 核心数据结构
+├── error.rs                  # 错误处理系统
+├── core/store.rs             # 核心存储引擎
+├── plugin/                   # 插件系统
+│   ├── manager.rs           # 插件管理器
+│   ├── signature.rs         # 签名验证
+│   ├── watcher.rs           # 热重载监控
+│   └── hook.rs              # 钩子系统
+├── template/                 # 模板系统
+│   ├── parser.rs            # 模板解析器
+│   └── renderer.rs          # 模板渲染器
+└── utils/                    # 工具模块
+    ├── encryption.rs        # SOPS 加密
+    ├── paths.rs             # 跨平台路径
+    └── system_env.rs        # 系统环境管理
+```
+
+### 主程序架构
+```
+main() → run_command() → 8个命令分组处理函数
+├── handle_read_commands()      # Get, List, Export, Status
+├── handle_write_commands()     # Set, Unset, Import
+├── handle_plugin_commands()    # Plugin 子命令
+├── handle_encrypt_commands()   # Encrypt, Decrypt, SetEncrypt
+├── handle_system_commands()    # SystemSet, SystemUnset, Doctor, Run
+├── handle_template_commands()  # Template 子命令
+├── handle_config_commands()    # Config 子命令
+└── handle_cache_commands()     # Cache 子命令
+```
+
+---
+
+## 📊 代码质量指标
+
+| 指标 | 状态 | 详情 |
+|------|------|------|
+| **功能完整性** | ✅ 优秀 | 核心功能全部实现 |
+| **测试覆盖** | ✅ 优秀 | 308+ 测试，100% 通过 |
+| **跨平台支持** | ✅ 良好 | Windows/Linux/macOS |
+| **代码质量** | ✅ 优秀 | 0 错误，0 Clippy 警告 |
+| **架构设计** | ✅ 优秀 | KISS/DRY/LOD 原则 |
+| **文档完整度** | ✅ 优秀 | 用户指南 + 开发指南 |
+
+### 重构成果
+- **主函数**: 375+ 行 → 50 行 (⬇️ 87%)
+- **run_command**: 375+ 行 → 120 行 (⬇️ 68%)
+- **代码重复**: 0 (提取 27 个辅助函数)
+- **测试代码**: 1165 行，100% 通过率
 
 ---
 
@@ -59,33 +126,21 @@ cat docs/user-guide.md
 # 2. 5分钟上手
 # 按照 user-guide.md 的快速上手章节操作
 
-# 3. 遇到问题
+# 3. 健康检查
 envcli doctor
 ```
 
 ### 作为开发者
 ```bash
-# 1. 了解项目架构
-cat docs/project-overview.md
-
-# 2. 阅读开发指南
+# 1. 阅读开发指南
 cat docs/development-guide.md
 
-# 3. 开发插件
+# 2. 开发插件
 # 参考 development-guide.md 的插件开发章节
+
+# 3. 运行测试
+cargo test
 ```
-
----
-
-## 📊 项目状态
-
-| 指标 | 状态 | 详情 |
-|------|------|------|
-| 功能完整性 | ✅ 优秀 | 核心功能全部实现 |
-| 测试覆盖 | ✅ 优秀 | 1000+ 行测试，100% 通过 |
-| 跨平台支持 | ✅ 良好 | Windows/Linux/macOS |
-| 代码质量 | ✅ 优秀 | 模块化架构，遵循最佳实践 |
-| 文档完整度 | ✅ 优秀 | 用户指南 + 开发指南 |
 
 ---
 
@@ -98,64 +153,21 @@ cat docs/development-guide.md
 
 ---
 
-## 📝 提交信息规范
+## 📝 提交规范
 
 ```bash
-# 重构提交
+# 重构
 git commit -m "refactor: Simplify main.rs with KISS/DRY/LOD principles"
 
-# UX 增强提交
+# 功能增强
 git commit -m "feat: UX增强 + 文档完善"
 
-# 性能优化提交
+# 性能优化
 git commit -m "perf: 实现性能缓存优化"
 
 # 文档更新
 git commit -m "docs: 重构文档系统，优化项目结构"
 ```
-
----
-
-## 🚀 核心特性
-
-### 四层架构存储引擎
-```
-Local > Project > User > System
-```
-
-### 插件系统
-- 动态库加载 (.so/.dll)
-- 外部可执行插件
-- Shell/Python 脚本
-- Ed25519 签名验证
-- 热重载监控
-- 钩子系统 (PreCommand/PostCommand/Error/PreSet/PostGet)
-
-### 模板系统
-- `{{VAR}}` 语法
-- 多层继承
-- 循环依赖检测
-- 默认值支持
-
-### 安全特性
-- SOPS 集成 (Age/GPG)
-- 加密存储
-- 签名验证
-- 权限控制
-
-### 性能优化
-- 系统环境缓存 (60秒 TTL)
-- 文件内容缓存 (基于修改时间)
-- 环境变量合并优化 (4次→1次)
-- 80-90% I/O 性能提升
-
----
-
-## 📅 时间线
-
-**开始**: 2025-12-27
-**完成**: 2025-12-30
-**文档优化**: 2025-12-31
 
 ---
 

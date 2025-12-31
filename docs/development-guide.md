@@ -46,21 +46,6 @@ fn run_command(command: Commands, verbose: bool) -> Result<()> {
 - **配置复用**：共享配置和常量
 
 ```rust
-// ❌ 避免重复
-fn handle_get(key: &str) -> Result<()> {
-    let store = Store::new()?;
-    let value = store.get(key)?;
-    println!("{}", value);
-    Ok(())
-}
-
-fn handle_set(key: &str, value: &str) -> Result<()> {
-    let store = Store::new()?;
-    store.set(key, value)?;
-    println!("Set {}={}", key, value);
-    Ok(())
-}
-
 // ✅ 使用辅助函数
 fn handle_result<T: Display>(result: Result<T>, verbose: bool) -> Result<()> {
     match result {
@@ -89,19 +74,6 @@ fn handle_result<T: Display>(result: Result<T>, verbose: bool) -> Result<()> {
 - **易于测试**：函数可独立测试
 
 ```rust
-// ❌ 违反 LOD - 过多的链式调用
-fn process() -> Result<()> {
-    let store = Store::new()?;
-    let plugin_manager = PluginManager::new()?;
-    let config = Config::load()?;
-
-    store.get("key")?
-         .and_then(|v| plugin_manager.transform(v))?
-         .and_then(|v| config.validate(v))?;
-
-    Ok(())
-}
-
 // ✅ 遵循 LOD - 使用辅助函数
 fn process() -> Result<()> {
     let context = create_context()?;
@@ -184,15 +156,17 @@ pub enum PluginPriority {
 }
 ```
 
-### 开发 Rust 动态库插件
+---
 
-#### 步骤 1: 项目设置
+## 开发 Rust 动态库插件
+
+### 步骤 1: 项目设置
 ```bash
 cargo new --lib my-plugin
 cd my-plugin
 ```
 
-#### 步骤 2: Cargo.toml 配置
+### 步骤 2: Cargo.toml 配置
 ```toml
 [package]
 name = "my-plugin"
@@ -208,7 +182,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 ```
 
-#### 步骤 3: 实现插件
+### 步骤 3: 实现插件
 ```rust
 use std::collections::HashMap;
 use envcli::plugin::*;
@@ -328,7 +302,7 @@ pub fn create_plugin() -> Box<dyn Plugin> {
 }
 ```
 
-#### 步骤 4: 编译和测试
+### 步骤 4: 编译和测试
 ```bash
 # 编译
 cargo build --release
@@ -347,9 +321,11 @@ envcli plugin config my-plugin set api_key "your-api-key"
 envcli plugin config my-plugin set log_level "debug"
 ```
 
-### 外部可执行插件
+---
 
-#### Shell 脚本示例
+## 外部可执行插件
+
+### Shell 脚本示例
 ```bash
 #!/bin/bash
 # my-plugin.sh
@@ -401,7 +377,7 @@ case "$1" in
 esac
 ```
 
-#### Python 插件示例
+### Python 插件示例
 ```python
 #!/usr/bin/env python3
 # my_plugin.py
@@ -457,80 +433,6 @@ if __name__ == "__main__":
         plugin.error(sys.argv[2], sys.argv[3])
 ```
 
-### 插件签名验证
-
-```rust
-// 签名验证系统
-use ring::signature::{Ed25519KeyPair, Signature, UnparsedPublicKey, ED25519};
-use sha2::{Sha256, Digest};
-
-pub struct SignatureVerifier {
-    public_key: Vec<u8>,
-}
-
-impl SignatureVerifier {
-    pub fn new(public_key: Vec<u8>) -> Self {
-        Self { public_key }
-    }
-
-    pub fn verify(&self, plugin_path: &str, signature: &str) -> Result<bool> {
-        // 读取插件文件
-        let plugin_data = std::fs::read(plugin_path)?;
-
-        // 计算哈希
-        let mut hasher = Sha256::new();
-        hasher.update(&plugin_data);
-        let hash = hasher.finalize();
-
-        // 验证签名
-        let public_key = UnparsedPublicKey::new(&ED25519, &self.public_key);
-        let signature_bytes = hex::decode(signature)?;
-
-        match public_key.verify(&hash, &signature_bytes) {
-            Ok(_) => Ok(true),
-            Err(_) => Ok(false),
-        }
-    }
-}
-```
-
-### 热重载系统
-
-```rust
-use notify::{Watcher, RecursiveMode, Result as NotifyResult};
-use std::sync::mpsc::channel;
-use std::time::Duration;
-
-pub struct PluginWatcher {
-    watcher: notify::RecommendedWatcher,
-}
-
-impl PluginWatcher {
-    pub fn new(plugin_dir: &str) -> NotifyResult<Self> {
-        let (tx, rx) = channel();
-
-        let mut watcher = notify::RecommendedWatcher::new(tx)?;
-        watcher.watch(plugin_dir.as_ref(), RecursiveMode::NonRecursive)?;
-
-        // 防抖处理
-        std::thread::spawn(move || {
-            let mut last_event = std::time::Instant::now();
-
-            while let Ok(event) = rx.recv() {
-                if last_event.elapsed() > Duration::from_millis(500) {
-                    // 处理插件变化
-                    println!("Plugin changed, reloading...");
-                    // 重新加载逻辑
-                    last_event = std::time::Instant::now();
-                }
-            }
-        });
-
-        Ok(Self { watcher })
-    }
-}
-```
-
 ---
 
 ## 安全最佳实践
@@ -550,7 +452,7 @@ export SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt
 ```yaml
 # .sops.yaml
 creation_rules:
-  - path_regex: secrets\\.env$
+  - path_regex: secrets\.env$
     age: age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p
 ```
 
@@ -989,8 +891,8 @@ jobs:
 
 ## 📚 相关资源
 
-- **项目概览**: [project-overview.md](./project-overview.md)
 - **用户指南**: [user-guide.md](./user-guide.md)
+- **项目概览**: [README.md](./README.md)
 - **变更日志**: [CHANGELOG.md](./CHANGELOG.md)
 
 ---
