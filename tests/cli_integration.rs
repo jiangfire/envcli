@@ -16,8 +16,8 @@ fn create_test_env() -> TempDir {
 fn get_env_command() -> std::path::PathBuf {
     // 使用 CARGO_MANIFEST_DIR 确保在任何工作目录下都能找到二进制文件
     // 这解决了在临时目录运行测试时找不到二进制的问题
-    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
-        .expect("CARGO_MANIFEST_DIR 应该在 cargo test 中可用");
+    let manifest_dir =
+        std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR 应该在 cargo test 中可用");
 
     let mut path = std::path::PathBuf::from(manifest_dir);
     path.push("target");
