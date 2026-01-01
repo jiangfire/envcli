@@ -545,16 +545,16 @@ mod comprehensive_tests {
     #[test]
     fn test_special_path_characters() {
         // TDD: 路径特殊字符
-        let key = "PATH";
-        let value = "C:\\Users\\Test\\App Data;D:\\Backup";
-
         #[cfg(target_os = "windows")]
         {
+            let key = "PATH";
+            let value = "C:\\\\Users\\\\Test\\\\App Data;D:\\\\Backup";
+
             let script = format!(
                 "[Environment]::SetEnvironmentVariable(\"{}\", \"{}\", \"User\")",
                 key, value
             );
-            assert!(script.contains("C:\\Users\\Test\\App Data"));
+            assert!(script.contains("C:\\\\Users\\\\Test\\\\App Data"));
         }
     }
 

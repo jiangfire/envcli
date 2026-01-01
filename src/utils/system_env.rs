@@ -1,7 +1,7 @@
 //! 跨平台系统环境变量写入工具
 //!
 //! 提供跨平台的系统环境变量写入功能：
-//! - Windows: 使用 PowerShell 写入注册表
+//! - Windows: 使用 `PowerShell` 写入注册表
 //! - Linux/macOS: 写入 shell 配置文件 (~/.bashrc, ~/.zshrc 等)
 
 use crate::error::{EnvError, Result};
@@ -17,9 +17,12 @@ impl SystemEnvWriter {
     /// 设置用户级系统环境变量（永久生效）
     ///
     /// # 平台差异
-    /// - **Windows**: 写入 HKEY_CURRENT_USER\Environment
+    /// - **Windows**: 写入 `HKEY_CURRENT_USER\Environment`
     /// - **Unix/Linux**: 写入 ~/.bashrc 或 ~/.zshrc
     /// - **macOS**: 写入 ~/.zprofile 或 ~/.zshrc
+    /// # Errors
+    ///
+    /// Returns errors from system environment write operations.
     pub fn set_user_var(key: &str, value: &str) -> Result<()> {
         #[cfg(target_os = "windows")]
         {
@@ -42,6 +45,10 @@ impl SystemEnvWriter {
     /// # 注意
     /// 仅 Windows 支持机器级变量
     /// Unix/Linux/macOS 会返回错误
+    ///
+    /// # Errors
+    ///
+    /// Returns errors from system environment write operations.
     pub fn set_machine_var(
         #[cfg_attr(not(target_os = "windows"), allow(unused_variables))] key: &str,
         #[cfg_attr(not(target_os = "windows"), allow(unused_variables))] value: &str,
@@ -64,6 +71,10 @@ impl SystemEnvWriter {
     /// # 参数
     /// * `key` - 变量名称
     /// * `scope` - 作用域: "global" (用户级) 或 "machine" (系统级)
+    ///
+    /// # Errors
+    ///
+    /// Returns errors from system environment write operations.
     pub fn unset_var(key: &str, scope: &str) -> Result<()> {
         match scope {
             "machine" => {
@@ -111,13 +122,12 @@ impl SystemEnvWriter {
         let output = Command::new("powershell")
             .args(["-Command", &ps_script])
             .output()
-            .map_err(|e| EnvError::SystemEnvWriteFailed(format!("无法执行 PowerShell: {}", e)))?;
+            .map_err(|e| EnvError::SystemEnvWriteFailed(format!("无法执行 PowerShell: {e}")))?;
 
         if !output.status.success() {
             let error_msg = String::from_utf8_lossy(&output.stderr);
             return Err(EnvError::SystemEnvWriteFailed(format!(
-                "写入用户环境变量失败: {}",
-                error_msg
+                "写入用户环境变量失败: {error_msg}"
             )));
         }
 
@@ -135,7 +145,7 @@ impl SystemEnvWriter {
         let output = Command::new("powershell")
             .args(["-Command", &ps_script])
             .output()
-            .map_err(|e| EnvError::SystemEnvWriteFailed(format!("无法执行 PowerShell: {}", e)))?;
+            .map_err(|e| EnvError::SystemEnvWriteFailed(format!("无法执行 PowerShell: {e}")))?;
 
         if !output.status.success() {
             let error_msg = String::from_utf8_lossy(&output.stderr);
@@ -146,8 +156,7 @@ impl SystemEnvWriter {
                 ));
             }
             return Err(EnvError::SystemEnvWriteFailed(format!(
-                "写入机器环境变量失败: {}",
-                error_msg
+                "写入机器环境变量失败: {error_msg}",
             )));
         }
 
@@ -166,7 +175,7 @@ impl SystemEnvWriter {
         let output = Command::new("powershell")
             .args(["-Command", &ps_script])
             .output()
-            .map_err(|e| EnvError::SystemEnvWriteFailed(format!("无法执行 PowerShell: {}", e)))?;
+            .map_err(|e| EnvError::SystemEnvWriteFailed(format!("无法执行 PowerShell: {e}")))?;
 
         if !output.status.success() {
             let error_msg = String::from_utf8_lossy(&output.stderr);
@@ -176,8 +185,7 @@ impl SystemEnvWriter {
                 ));
             }
             return Err(EnvError::SystemEnvWriteFailed(format!(
-                "删除环境变量失败: {}",
-                error_msg
+                "删除环境变量失败: {error_msg}"
             )));
         }
 
@@ -309,11 +317,11 @@ impl SystemEnvWriter {
             .truncate(true)
             .create(true)
             .open(config_file)
-            .map_err(|e| EnvError::SystemEnvWriteFailed(format!("无法打开配置文件: {}", e)))?;
+            .map_err(|e| EnvError::SystemEnvWriteFailed(format!("无法打开配置文件: {e}")))?;
 
         for line in lines {
             writeln!(file, "{}", line)
-                .map_err(|e| EnvError::SystemEnvWriteFailed(format!("写入配置文件失败: {}", e)))?;
+                .map_err(|e| EnvError::SystemEnvWriteFailed(format!("写入配置文件失败: {e}")))?;
         }
 
         Ok(())
@@ -355,11 +363,11 @@ impl SystemEnvWriter {
             .write(true)
             .truncate(true)
             .open(config_file)
-            .map_err(|e| EnvError::SystemEnvWriteFailed(format!("无法打开配置文件: {}", e)))?;
+            .map_err(|e| EnvError::SystemEnvWriteFailed(format!("无法打开配置文件: {e}")))?;
 
         for line in lines {
             writeln!(file, "{}", line)
-                .map_err(|e| EnvError::SystemEnvWriteFailed(format!("写入配置文件失败: {}", e)))?;
+                .map_err(|e| EnvError::SystemEnvWriteFailed(format!("写入配置文件失败: {e}")))?;
         }
 
         Ok(())

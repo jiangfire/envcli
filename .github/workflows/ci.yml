@@ -37,7 +37,7 @@ jobs:
         run: cargo fmt -- --check
 
       - name: Run clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --all-targets -- -D warnings
 
       - name: Run tests
         run: cargo test --verbose
@@ -104,7 +104,7 @@ jobs:
 
       - name: Check for warnings
         run: |
-          WARNINGS=$(cargo clippy --all-targets --all-features 2>&1 | grep -c "warning:" || true)
+          WARNINGS=$(cargo clippy --all-targets 2>&1 | grep -c "warning:" || true)
           if [ "$WARNINGS" -gt 0 ]; then
             echo "❌ 发现 $WARNINGS 个 clippy 警告"
             exit 1

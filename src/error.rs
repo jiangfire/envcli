@@ -102,14 +102,14 @@ impl EnvError {
     pub fn report(&self, verbose: bool) {
         if verbose {
             // 详细模式：打印完整错误链 + 解决方案建议
-            eprintln!("❌ 错误: {}", self);
+            eprintln!("❌ 错误: {self}");
 
             // 如果有源错误，打印级联信息
             if let Some(source) = self.source() {
-                eprintln!("  └─ 原因: {}", source);
+                eprintln!("  └─ 原因: {source}");
                 let mut current = source.source();
                 while let Some(next) = current {
-                    eprintln!("     └─ {}", next);
+                    eprintln!("     └─ {next}");
                     current = next.source();
                 }
             }
@@ -119,26 +119,27 @@ impl EnvError {
         } else {
             // 安静模式：只打印关键信息
             match self {
-                EnvError::NotFound(key) => eprintln!("未找到变量: {}", key),
-                EnvError::Io(err) => eprintln!("文件错误: {}", err),
-                EnvError::PermissionDenied(msg) => eprintln!("权限被拒绝: {}", msg),
-                EnvError::InvalidSource(src) => eprintln!("无效层级: {}", src),
+                EnvError::NotFound(key) => eprintln!("未找到变量: {key}"),
+                EnvError::Io(err) => eprintln!("文件错误: {err}"),
+                EnvError::PermissionDenied(msg) => eprintln!("权限被拒绝: {msg}"),
+                EnvError::InvalidSource(src) => eprintln!("无效层级: {src}"),
                 EnvError::FileNotFound(path) => eprintln!("文件不存在: {}", path.display()),
-                EnvError::SystemEnvWriteFailed(msg) => eprintln!("系统环境变量写入失败: {}", msg),
-                EnvError::AdminPrivilegesRequired(msg) => eprintln!("需要管理员权限: {}", msg),
-                EnvError::InvalidArgument(msg) => eprintln!("无效参数: {}", msg),
-                _ => eprintln!("错误: {}", self),
+                EnvError::SystemEnvWriteFailed(msg) => eprintln!("系统环境变量写入失败: {msg}"),
+                EnvError::AdminPrivilegesRequired(msg) => eprintln!("需要管理员权限: {msg}"),
+                EnvError::InvalidArgument(msg) => eprintln!("无效参数: {msg}"),
+                _ => eprintln!("错误: {self}"),
             }
         }
     }
 
     /// 根据错误类型提供解决方案建议
+    #[allow(clippy::too_many_lines)]
     fn print_suggestions(&self) {
         match self {
             EnvError::NotFound(key) => {
                 eprintln!();
                 eprintln!("💡 建议:");
-                eprintln!("  1. 检查变量名拼写: {}", key);
+                eprintln!("  1. 检查变量名拼写: {key}");
                 eprintln!("  2. 查看所有变量: envcli list");
                 eprintln!("  3. 按层级搜索: envcli list --source=<level>");
                 eprintln!("  4. 查看帮助: envcli get --help");
@@ -170,7 +171,7 @@ impl EnvError {
                 eprintln!();
                 eprintln!("💡 建议:");
                 eprintln!("  1. 有效层级: system, user, project, local");
-                eprintln!("  2. 当前输入: {}", src);
+                eprintln!("  2. 当前输入: {src}");
                 eprintln!("  3. 查看帮助: envcli list --help");
             }
             EnvError::SystemEnvWriteFailed(_) => {
@@ -191,7 +192,7 @@ impl EnvError {
             EnvError::InvalidArgument(msg) => {
                 eprintln!();
                 eprintln!("💡 建议:");
-                eprintln!("  1. 检查参数格式: {}", msg);
+                eprintln!("  1. 检查参数格式: {msg}");
                 eprintln!("  2. 查看命令帮助: envcli <command> --help");
                 eprintln!("  3. 参考文档: https://github.com/your-repo/envcli");
             }
@@ -333,17 +334,14 @@ impl From<PluginError> for EnvError {
     fn from(err: PluginError) -> Self {
         match err {
             PluginError::NotFound(s) => EnvError::PluginNotFound(s),
-            PluginError::LoadFailed(s) => EnvError::PluginLoadFailed(s),
-            PluginError::ExecutionFailed(s) => EnvError::PluginExecutionFailed(s),
+            PluginError::LoadFailed(s) | PluginError::AlreadyExists(s) => EnvError::PluginLoadFailed(s),
+            PluginError::ExecutionFailed(s) | PluginError::Timeout(s) | PluginError::Unsupported(s) => EnvError::PluginExecutionFailed(s),
             PluginError::ConfigError(s) => EnvError::PluginConfigError(s),
             PluginError::DependencyMissing(s) => EnvError::PluginDependencyMissing(s),
             PluginError::Incompatible(s) => EnvError::PluginIncompatible(s),
             PluginError::Io(io_err) => EnvError::Io(io_err),
             PluginError::Json(json_err) => EnvError::Json(json_err),
             PluginError::Toml(toml_err) => EnvError::Toml(toml_err.to_string()),
-            PluginError::Timeout(s) => EnvError::PluginExecutionFailed(s),
-            PluginError::AlreadyExists(s) => EnvError::PluginLoadFailed(s),
-            PluginError::Unsupported(s) => EnvError::PluginExecutionFailed(s),
         }
     }
 }

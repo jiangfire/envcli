@@ -22,12 +22,12 @@ impl SystemEnvCache {
     }
 }
 
-/// 全局缓存实例（使用 OnceLock 确保线程安全）
+/// 全局缓存实例（使用 `OnceLock` 确保线程安全）
 static SYSTEM_ENV_CACHE: std::sync::OnceLock<Mutex<Option<SystemEnvCache>>> =
     std::sync::OnceLock::new();
 
 /// 实际读取系统环境的内部函数（无缓存）
-fn read_system_env_from_source() -> Result<HashMap<String, String>> {
+fn read_system_env_from_source() -> HashMap<String, String> {
     let mut env = HashMap::new();
 
     #[cfg(target_os = "windows")]
@@ -65,12 +65,16 @@ fn read_system_env_from_source() -> Result<HashMap<String, String>> {
         }
     }
 
-    Ok(env)
+    env
 }
 
-/// 获取系统环境变量（带缓存）
+/// # Panics
 ///
-/// 使用 60 秒 TTL 的内存缓存来避免重复的系统调用
+/// Panics if the mutex is poisoned.
+///
+/// # Errors
+///
+/// Returns errors from system environment reading operations.
 pub fn get_system_env() -> Result<HashMap<String, String>> {
     let cache_guard = SYSTEM_ENV_CACHE.get_or_init(|| Mutex::new(None));
     let mut cache_opt = cache_guard.lock().unwrap();
@@ -83,7 +87,7 @@ pub fn get_system_env() -> Result<HashMap<String, String>> {
     }
 
     // 缓存失效，重新读取
-    let env = read_system_env_from_source()?;
+    let env = read_system_env_from_source();
 
     // 更新缓存
     *cache_opt = Some(SystemEnvCache {
@@ -94,7 +98,9 @@ pub fn get_system_env() -> Result<HashMap<String, String>> {
     Ok(env)
 }
 
-/// 手动清除系统环境缓存（用于测试或强制刷新）
+/// # Panics
+///
+/// Panics if the mutex is poisoned.
 pub fn clear_system_env_cache() {
     if let Some(cache) = SYSTEM_ENV_CACHE.get() {
         let mut guard = cache.lock().unwrap();
@@ -114,6 +120,10 @@ pub fn get_system_env_cache_stats() -> (bool, Duration) {
 }
 
 /// 获取用户配置目录：~/.envcli
+///
+/// # Errors
+///
+/// Returns `EnvError::ConfigDirMissing` if config directory cannot be determined.
 pub fn get_config_dir() -> Result<PathBuf> {
     let home = dirs::home_dir()
         .ok_or_else(|| EnvError::ConfigDirMissing("无法找到用户主目录".to_string()))?;
@@ -122,6 +132,10 @@ pub fn get_config_dir() -> Result<PathBuf> {
 }
 
 /// 获取指定层级的文件路径
+///
+/// # Errors
+///
+/// Returns errors from path resolution or file system operations.
 pub fn get_layer_path(source: &EnvSource) -> Result<PathBuf> {
     let config_dir = get_config_dir()?;
 
@@ -130,18 +144,22 @@ pub fn get_layer_path(source: &EnvSource) -> Result<PathBuf> {
         EnvSource::User => Ok(config_dir.join("user.env")),
         EnvSource::Project => {
             let current_dir = std::env::current_dir()
-                .map_err(|e| EnvError::ConfigDirMissing(format!("无法获取当前目录: {}", e)))?;
+                .map_err(|e| EnvError::ConfigDirMissing(format!("无法获取当前目录: {e}")))?;
             Ok(current_dir.join(".envcli").join("project.env"))
         }
         EnvSource::Local => {
             let current_dir = std::env::current_dir()
-                .map_err(|e| EnvError::ConfigDirMissing(format!("无法获取当前目录: {}", e)))?;
+                .map_err(|e| EnvError::ConfigDirMissing(format!("无法获取当前目录: {e}")))?;
             Ok(current_dir.join(".envcli").join("local.env"))
         }
     }
 }
 
 /// 确保配置目录存在 (幂等操作)
+///
+/// # Errors
+///
+/// Returns errors from directory creation operations.
 pub fn ensure_config_dir() -> Result<()> {
     let config_dir = get_config_dir()?;
     if !config_dir.exists() {
@@ -151,9 +169,13 @@ pub fn ensure_config_dir() -> Result<()> {
 }
 
 /// 确保项目级目录存在
+///
+/// # Errors
+///
+/// Returns errors from directory creation operations.
 pub fn ensure_project_dir() -> Result<()> {
     let current_dir = std::env::current_dir()
-        .map_err(|e| EnvError::ConfigDirMissing(format!("无法获取当前目录: {}", e)))?;
+        .map_err(|e| EnvError::ConfigDirMissing(format!("无法获取当前目录: {e}")))?;
     let project_dir = current_dir.join(".envcli");
     if !project_dir.exists() {
         std::fs::create_dir_all(&project_dir)?;
@@ -162,29 +184,47 @@ pub fn ensure_project_dir() -> Result<()> {
 }
 
 /// 获取模板目录路径
+///
+/// # Errors
+///
+/// Returns errors from config directory resolution.
 pub fn get_templates_dir() -> Result<PathBuf> {
     let config_dir = get_config_dir()?;
     Ok(config_dir.join("templates"))
 }
 
 /// 获取插件配置文件路径
+///
+/// # Errors
+///
+/// Returns errors from config directory resolution.
 pub fn get_plugin_config_path() -> Result<PathBuf> {
     let config_dir = get_config_dir()?;
     Ok(config_dir.join("plugins.toml"))
 }
 
 /// 获取插件目录路径
+///
+/// # Errors
+///
+/// Returns errors from config directory resolution.
 pub fn get_plugins_dir() -> Result<PathBuf> {
     let config_dir = get_config_dir()?;
     Ok(config_dir.join("plugins"))
 }
 
 /// 检查文件是否存在
+#[must_use]
 pub fn file_exists(path: &Path) -> bool {
     path.exists() && path.is_file()
 }
 
 /// 读取文件内容，返回错误时提供详细信息
+///
+/// # Errors
+///
+/// Returns `EnvError::FileNotFound` if the file doesn't exist.
+/// Returns `EnvError::Io` for I/O errors.
 pub fn read_file(path: &Path) -> Result<String> {
     if !path.exists() {
         return Err(EnvError::FileNotFound(path.to_path_buf()));
@@ -199,6 +239,10 @@ pub fn read_file(path: &Path) -> Result<String> {
 }
 
 /// 安全写入文件 (使用临时文件 + 原子替换)
+///
+/// # Errors
+///
+/// Returns errors from directory creation or file operations.
 pub fn write_file_safe(path: &Path, content: &str) -> Result<()> {
     // 确保父目录存在
     if let Some(parent) = path.parent()
@@ -220,6 +264,10 @@ pub fn write_file_safe(path: &Path, content: &str) -> Result<()> {
 /// 追加内容到文件 (如果内容已存在则不追加)
 ///
 /// 注意：此函数目前未使用，保留作为工具函数供未来使用
+///
+/// # Errors
+///
+/// Returns errors from file operations.
 #[allow(dead_code)]
 pub fn append_to_file_unique(path: &Path, line: &str) -> Result<()> {
     // 如果文件存在，检查是否已有该行

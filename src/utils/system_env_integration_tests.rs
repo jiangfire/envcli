@@ -3,13 +3,12 @@
 //! 测试 Windows 注册表读取功能，确保 system-set 设置的变量能被 get 正确读取
 
 #[cfg(test)]
+#[cfg(target_os = "windows")]
 mod windows_registry_tests {
-    use super::super::paths::get_system_env;
-    #[cfg(target_os = "windows")]
     use std::collections::HashMap;
+    use crate::utils::paths::get_system_env;
 
     #[test]
-    #[cfg(target_os = "windows")]
     fn test_windows_registry_read_integration() {
         // TDD: 验证从注册表读取环境变量
         // 这个测试验证了修复后的 get_system_env 能正确读取注册表
@@ -28,7 +27,7 @@ mod windows_registry_tests {
     }
 
     #[test]
-    #[cfg(target_os = "windows")]
+
     fn test_windows_registry_priority() {
         // TDD: 验证注册表变量优先级高于 std::env::vars()
         // 这个测试验证了注册表变量会覆盖进程环境变量
@@ -43,7 +42,6 @@ mod windows_registry_tests {
     }
 
     #[test]
-    #[cfg(target_os = "windows")]
     fn test_windows_registry_special_chars() {
         // TDD: 验证注册表中特殊字符的处理
         // 确保包含特殊字符的变量名能被正确处理
@@ -63,7 +61,6 @@ mod windows_registry_tests {
     }
 
     #[test]
-    #[cfg(target_os = "windows")]
     fn test_windows_registry_empty_values_filtered() {
         // TDD: 验证空值被正确过滤
         // get_system_env 应该跳过空值（从注册表读取时）
@@ -82,7 +79,6 @@ mod windows_registry_tests {
     }
 
     #[test]
-    #[cfg(target_os = "windows")]
     fn test_windows_registry_vs_process_env() {
         // TDD: 验证注册表读取与进程环境变量的合并
         // 应该包含两者的内容，注册表优先

@@ -16,13 +16,9 @@ use std::collections::HashMap;
 pub struct EnvMerger;
 
 impl EnvMerger {
-    /// 解析临时环境变量参数
+    /// # Errors
     ///
-    /// # 输入
-    /// `["DB_HOST=localhost", "DB_PORT=5432"]`
-    ///
-    /// # 输出
-    /// `[("DB_HOST", "localhost"), ("DB_PORT", "5432")]`
+    /// Returns `EnvError::EnvParseError` if any argument is not in KEY=VALUE format.
     pub fn parse_temp_vars(env_args: &[String]) -> Result<Vec<(String, String)>> {
         let mut vars = Vec::new();
 
@@ -36,8 +32,7 @@ impl EnvMerger {
                 }
                 _ => {
                     return Err(EnvError::EnvParseError(format!(
-                        "无效的环境变量格式 '{}'，应为 KEY=VALUE",
-                        arg
+                        "无效的环境变量格式 '{arg}'，应为 KEY=VALUE"
                     )));
                 }
             }
@@ -47,6 +42,12 @@ impl EnvMerger {
     }
 
     /// 从 .env 文件解析临时变量
+    ///
+    /// # Errors
+    ///
+    /// Returns `EnvError::FileNotFound` if the file doesn't exist.
+    /// Returns `EnvError::Io` for I/O errors.
+    /// Returns parsing errors for invalid file content.
     pub fn parse_file(path: &str) -> Result<Vec<(String, String)>> {
         // 读取文件内容
         let path = std::path::Path::new(path);
@@ -67,6 +68,10 @@ impl EnvMerger {
     ///
     /// # 优先级顺序
     /// 临时变量 > Local > Project > User > System
+    ///
+    /// # Errors
+    ///
+    /// Returns errors from store operations.
     pub fn merge_environment(
         store: &Store,
         temp_vars: &[(String, String)],
@@ -235,11 +240,11 @@ mod tests {
             let temp_dir = tempfile::tempdir().unwrap();
             let test_file = temp_dir.path().join(".env");
 
-            let content = r#"
+            let content = r"
 DB_HOST=localhost
 DB_PORT=5432
 APP_ENV=development
-            "#;
+            ";
 
             fs::write(&test_file, content).unwrap();
 
@@ -258,12 +263,12 @@ APP_ENV=development
             let temp_dir = tempfile::tempdir().unwrap();
             let test_file = temp_dir.path().join(".env");
 
-            let content = r#"
+            let content = r"
 # Database configuration
 DB_HOST=localhost
 # Port number
 DB_PORT=5432
-            "#;
+            ";
 
             fs::write(&test_file, content).unwrap();
 

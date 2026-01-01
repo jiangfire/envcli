@@ -638,19 +638,26 @@ pub enum PluginConfigCommands {
 }
 
 /// 解析输出格式
+///
+/// # Errors
+/// 如果格式字符串无效则返回默认格式
+#[must_use]
 pub fn parse_format(format_str: &str) -> OutputFormat {
     OutputFormat::from(format_str)
 }
 
 /// 验证来源是否有效且可写（针对写入操作）
+///
+/// # Errors
+/// - 如果来源字符串无效
+/// - 如果来源层级不可写
 pub fn validate_writable_source(source_str: &str) -> Result<EnvSource, EnvError> {
     let source = EnvSource::from_str(source_str)
         .ok_or_else(|| EnvError::InvalidSource(source_str.to_string()))?;
 
     if !source.is_writable() {
         return Err(EnvError::PermissionDenied(format!(
-            "层级 {} 不可写",
-            source
+            "层级 {source} 不可写"
         )));
     }
 
@@ -658,18 +665,23 @@ pub fn validate_writable_source(source_str: &str) -> Result<EnvSource, EnvError>
 }
 
 /// 为 list 命令解析 source，允许为 None
+///
+/// # Errors
+/// 如果来源字符串无效则返回错误
 pub fn parse_list_source(source_str: Option<&str>) -> Result<Option<EnvSource>, EnvError> {
-    match source_str {
-        Some(s) => {
-            let source =
-                EnvSource::from_str(s).ok_or_else(|| EnvError::InvalidSource(s.to_string()))?;
-            Ok(Some(source))
-        }
-        None => Ok(None),
+    if let Some(s) = source_str {
+        let source =
+            EnvSource::from_str(s).ok_or_else(|| EnvError::InvalidSource(s.to_string()))?;
+        Ok(Some(source))
+    } else {
+        Ok(None)
     }
 }
 
 /// 验证作用域参数
+///
+/// # Errors
+/// 如果作用域不是 'global' 或 'machine' 则返回错误
 pub fn validate_scope(scope: &str) -> Result<(), EnvError> {
     if scope != "global" && scope != "machine" {
         return Err(EnvError::InvalidArgument(

@@ -18,7 +18,11 @@ impl EncryptedDotenvParser {
     /// - 加密变量：KEY=ENC[SOPS:v1:...]
     /// - 注释：# comment
     /// - 空行
-    pub fn parse(content: &str, source: EnvSource) -> Result<Vec<EncryptedEnvVar>> {
+    ///
+    /// # Errors
+    ///
+    /// Returns parsing errors for invalid format.
+    pub fn parse(content: &str, source: &EnvSource) -> Result<Vec<EncryptedEnvVar>> {
         let mut vars = Vec::new();
 
         for (line_num, line) in content.lines().enumerate() {
@@ -30,46 +34,43 @@ impl EncryptedDotenvParser {
             }
 
             // 解析 KEY=VALUE
-            match trimmed.split_once('=') {
-                Some((key, value)) => {
-                    let key = key.trim();
-                    let value = value.trim();
+            if let Some((key, value)) = trimmed.split_once('=') {
+                let key = key.trim();
+                let value = value.trim();
 
-                    if key.is_empty() {
-                        return Err(EnvError::Parse(format!(
-                            "空的键名在第 {} 行: '{}'",
-                            line_num + 1,
-                            trimmed
-                        )));
-                    }
-
-                    // 检测加密类型
-                    let encryption_type = if SopsEncryptor::is_encrypted(value) {
-                        EncryptionType::Sops
-                    } else {
-                        EncryptionType::None
-                    };
-
-                    vars.push(EncryptedEnvVar::new(
-                        key.to_string(),
-                        value.to_string(),
-                        source.clone(),
-                        encryption_type,
-                    ));
+                if key.is_empty() {
+                    return Err(EnvError::Parse(format!(
+                        "空的键名在第 {} 行: '{}'",
+                        line_num + 1,
+                        trimmed
+                    )));
                 }
-                None => {
-                    // 不是 KEY=VALUE 格式，跳过
-                    continue;
-                }
+
+                // 检测加密类型
+                let encryption_type = if SopsEncryptor::is_encrypted(value) {
+                    EncryptionType::Sops
+                } else {
+                    EncryptionType::None
+                };
+
+                vars.push(EncryptedEnvVar::new(
+                    key.to_string(),
+                    value.to_string(),
+                    source.clone(),
+                    encryption_type,
+                ));
+            } else {
+                // 不是 KEY=VALUE 格式，跳过
             }
         }
 
         Ok(vars)
     }
 
-    /// 序列化 EncryptedEnvVar 列表为 .env 格式
+    /// 序列化 `EncryptedEnvVar` 列表为 .env 格式
     ///
     /// 保持加密状态不变
+    #[must_use]
     pub fn serialize(vars: &[EncryptedEnvVar]) -> String {
         vars.iter()
             .map(|v| format!("{}={}", v.key, v.value))
@@ -80,6 +81,10 @@ impl EncryptedDotenvParser {
     /// 加密明文变量并序列化
     ///
     /// 将所有标记为 Sops 的明文变量加密
+    ///
+    /// # Errors
+    ///
+    /// Returns encryption errors if encryption fails.
     pub fn serialize_and_encrypt(vars: &[EncryptedEnvVar]) -> Result<String> {
         let encryptor = SopsEncryptor::new();
         let mut lines = Vec::new();
@@ -99,12 +104,12 @@ impl EncryptedDotenvParser {
     }
 
     /// 检测内容是否包含加密变量
+    #[must_use]
     pub fn has_encrypted(content: &str) -> bool {
         content.lines().any(|line| {
             line.trim()
                 .split_once('=')
-                .map(|(_, value)| SopsEncryptor::is_encrypted(value.trim()))
-                .unwrap_or(false)
+                .is_some_and(|(_, value)| SopsEncryptor::is_encrypted(value.trim()))
         })
     }
 }
@@ -115,15 +120,15 @@ mod tests {
 
     #[test]
     fn test_parse_mixed_content() {
-        let content = r#"
+        let content = r"
 # 数据库配置
 DB_HOST=localhost
 DB_PASS=ENC[SOPS:v1:abc123]
 # API 密钥
 API_KEY=secret_key
-        "#;
+        ";
 
-        let vars = EncryptedDotenvParser::parse(content, EnvSource::Local).unwrap();
+        let vars = EncryptedDotenvParser::parse(content, &EnvSource::Local).unwrap();
 
         assert_eq!(vars.len(), 3);
 
@@ -182,7 +187,7 @@ API_KEY=secret_key
     #[test]
     fn test_parse_empty_value() {
         let content = "EMPTY=\nKEY=value";
-        let vars = EncryptedDotenvParser::parse(content, EnvSource::Local).unwrap();
+        let vars = EncryptedDotenvParser::parse(content, &EnvSource::Local).unwrap();
 
         assert_eq!(vars.len(), 2);
         assert_eq!(vars[0].value, "");
@@ -192,7 +197,7 @@ API_KEY=secret_key
     #[test]
     fn test_parse_invalid_format() {
         let content = "INVALID_LINE\nKEY=value";
-        let vars = EncryptedDotenvParser::parse(content, EnvSource::Local).unwrap();
+        let vars = EncryptedDotenvParser::parse(content, &EnvSource::Local).unwrap();
 
         // 应该跳过无效行
         assert_eq!(vars.len(), 1);

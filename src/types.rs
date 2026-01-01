@@ -31,6 +31,7 @@ impl fmt::Display for EnvSource {
 impl EnvSource {
     /// 从字符串转换
     #[allow(clippy::should_implement_trait)]
+    #[must_use]
     pub fn from_str(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "system" => Some(EnvSource::System),
@@ -42,6 +43,7 @@ impl EnvSource {
     }
 
     /// 是否可写
+    #[must_use]
     pub fn is_writable(&self) -> bool {
         !matches!(self, EnvSource::System)
     }
@@ -57,6 +59,12 @@ pub struct EnvVar {
 }
 
 impl EnvVar {
+    /// 创建新的环境变量条目
+    ///
+    /// # Panics
+    ///
+    /// Panics if the system time is before the UNIX epoch (extremely unlikely).
+    #[must_use]
     pub fn new(key: String, value: String, source: EnvSource) -> Self {
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -125,6 +133,12 @@ pub struct EncryptedEnvVar {
 }
 
 impl EncryptedEnvVar {
+    /// 创建新的加密环境变量条目
+    ///
+    /// # Panics
+    ///
+    /// Panics if the system time is before the UNIX epoch (extremely unlikely).
+    #[must_use]
     pub fn new(
         key: String,
         value: String,
@@ -146,6 +160,7 @@ impl EncryptedEnvVar {
     }
 
     /// 检查是否已加密
+    #[must_use]
     pub fn is_encrypted(&self) -> bool {
         match self.encryption_type {
             EncryptionType::None => false,
@@ -156,7 +171,11 @@ impl EncryptedEnvVar {
         }
     }
 
-    /// 转换为普通 EnvVar（如果已加密则返回错误）
+    /// 转换为普通 `EnvVar`（如果已加密则返回错误）
+    ///
+    /// # Errors
+    ///
+    /// Returns `EnvError::EncryptionError` if the variable is encrypted.
     pub fn to_env_var(&self) -> Result<EnvVar> {
         if self.is_encrypted() {
             return Err(EnvError::EncryptionError(
@@ -173,7 +192,7 @@ impl EncryptedEnvVar {
     }
 }
 
-/// 从 EnvVar 转换为 EncryptedEnvVar（明文）
+/// 从 `EnvVar` 转换为 EncryptedEnvVar（明文）
 impl From<EnvVar> for EncryptedEnvVar {
     fn from(var: EnvVar) -> Self {
         EncryptedEnvVar::new(var.key, var.value, var.source, EncryptionType::None)

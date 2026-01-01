@@ -357,7 +357,7 @@ impl Store {
         // 读取现有变量（如果文件存在）
         let mut vars = if file_exists(&path) {
             let content = read_file(&path)?;
-            EncryptedDotenvParser::parse(&content, EnvSource::Local)?
+            EncryptedDotenvParser::parse(&content, &EnvSource::Local)?
         } else {
             Vec::new()
         };
@@ -426,7 +426,7 @@ impl Store {
 
         // 检查是否包含加密变量
         if EncryptedDotenvParser::has_encrypted(&content) {
-            let vars = EncryptedDotenvParser::parse(&content, source.clone())?;
+            let vars = EncryptedDotenvParser::parse(&content, source)?;
 
             for var in vars {
                 if var.key == key {
@@ -435,10 +435,9 @@ impl Store {
                         let encryptor = SopsEncryptor::new();
                         let decrypted = encryptor.decrypt(&var.value)?;
                         return Ok(Some(decrypted));
-                    } else {
-                        // 明文直接返回
-                        return Ok(Some(var.value));
                     }
+                    // 明文直接返回
+                    return Ok(Some(var.value));
                 }
             }
         } else {
@@ -484,7 +483,7 @@ impl Store {
                 }
 
                 let content = read_file(&path)?;
-                EncryptedDotenvParser::parse(&content, source.clone())
+                EncryptedDotenvParser::parse(&content, source)
             }
         }
     }

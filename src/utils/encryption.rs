@@ -1,6 +1,6 @@
 //! SOPS 加密工具模块
 //!
-//! 提供基于 SOPS (Secrets OPerationS) 的加密/解密功能
+//! 提供基于 SOPS (Secrets `OPerationS`) 的加密/解密功能
 //! 支持多种加密后端：AWS KMS, GCP KMS, Azure Key Vault, GPG 等
 
 use crate::error::{EnvError, Result};
@@ -23,31 +23,37 @@ impl Default for CacheConfig {
 
 impl CacheConfig {
     /// 创建指定大小的缓存配置
+    #[must_use]
     pub fn new(max_size: usize) -> Self {
         Self { max_size }
     }
 
     /// 无限制缓存
+    #[must_use]
     pub fn unlimited() -> Self {
         Self { max_size: 0 }
     }
 
     /// 创建默认缓存配置（100条记录）
+    #[must_use]
     pub fn new_default() -> Self {
         Self { max_size: 100 }
     }
 
     /// 创建小缓存配置（适合内存受限环境）
+    #[must_use]
     pub fn small() -> Self {
         Self { max_size: 10 }
     }
 
     /// 创建大缓存配置（适合高频访问）
+    #[must_use]
     pub fn large() -> Self {
         Self { max_size: 1000 }
     }
 
     /// 创建严格限制的缓存配置（适合测试）
+    #[must_use]
     pub fn strict() -> Self {
         Self { max_size: 5 }
     }
@@ -62,6 +68,7 @@ pub struct DecryptCache {
 
 impl DecryptCache {
     /// 创建缓存
+    #[must_use]
     pub fn new(config: CacheConfig) -> Self {
         Self {
             cache: Arc::new(Mutex::new(HashMap::new())),
@@ -70,12 +77,21 @@ impl DecryptCache {
     }
 
     /// 从缓存获取值（短暂持有锁）
+    ///
+    /// # Panics
+    ///
+    /// Panics if the mutex is poisoned (another thread panicked while holding the lock).
+    #[must_use]
     pub fn get(&self, key: &str) -> Option<String> {
         let cache = self.cache.lock().unwrap();
         cache.get(key).cloned()
     }
 
     /// 存入缓存（短暂持有锁，带大小限制）
+    ///
+    /// # Panics
+    ///
+    /// Panics if the mutex is poisoned (another thread panicked while holding the lock).
     pub fn insert(&self, key: String, value: String) {
         let mut cache = self.cache.lock().unwrap();
 
@@ -91,12 +107,21 @@ impl DecryptCache {
     }
 
     /// 清除缓存
+    ///
+    /// # Panics
+    ///
+    /// Panics if the mutex is poisoned (another thread panicked while holding the lock).
     pub fn clear(&self) {
         let mut cache = self.cache.lock().unwrap();
         cache.clear();
     }
 
     /// 获取缓存大小
+    ///
+    /// # Panics
+    ///
+    /// Panics if the mutex is poisoned (another thread panicked while holding the lock).
+    #[must_use]
     pub fn size(&self) -> usize {
         let cache = self.cache.lock().unwrap();
         cache.len()
@@ -117,6 +142,7 @@ impl Default for SopsEncryptor {
 
 impl SopsEncryptor {
     /// 创建不带缓存的加密器（静态方法，保持向后兼容）
+    #[must_use]
     pub fn new() -> Self {
         Self { cache: None }
     }
@@ -125,6 +151,7 @@ impl SopsEncryptor {
     ///
     /// # 参数
     /// * `max_cache_size` - 最大缓存条目数，0 表示无限制
+    #[must_use]
     pub fn with_cache(max_cache_size: usize) -> Self {
         if max_cache_size > 0 {
             Self {
@@ -136,6 +163,7 @@ impl SopsEncryptor {
     }
 
     /// 使用指定缓存配置创建加密器
+    #[must_use]
     pub fn with_cache_config(config: CacheConfig) -> Self {
         if config.max_size > 0 {
             Self {
@@ -147,6 +175,7 @@ impl SopsEncryptor {
     }
 
     /// 创建默认缓存（100条记录）
+    #[must_use]
     pub fn with_default_cache() -> Self {
         Self::with_cache(100)
     }
@@ -159,6 +188,7 @@ impl SopsEncryptor {
     }
 
     /// 获取缓存大小
+    #[must_use]
     pub fn cache_size(&self) -> usize {
         if let Some(cache) = &self.cache {
             cache.size()
@@ -168,6 +198,7 @@ impl SopsEncryptor {
     }
 
     /// 检查 SOPS 是否可用（静态方法）
+    #[must_use]
     pub fn is_available() -> bool {
         Command::new("sops").arg("--version").output().is_ok()
     }
@@ -176,6 +207,10 @@ impl SopsEncryptor {
     ///
     /// # 返回
     /// Ok(()) 如果可用，否则返回错误描述
+    ///
+    /// # Errors
+    ///
+    /// Returns an error string if SOPS is not available or cannot determine version.
     pub fn check_availability() -> std::result::Result<(), String> {
         if !Self::is_available() {
             return Err("SOPS 未安装或不在 PATH 中".to_string());
@@ -183,16 +218,21 @@ impl SopsEncryptor {
 
         match Self::version() {
             Ok(_) => Ok(()),
-            Err(e) => Err(format!("无法获取 SOPS 版本: {}", e)),
+            Err(e) => Err(format!("无法获取 SOPS 版本: {e}")),
         }
     }
 
     /// 验证值是否为加密格式（静态方法）
+    #[must_use]
     pub fn is_encrypted(value: &str) -> bool {
         value.starts_with("ENC[SOPS:") && value.ends_with(']')
     }
 
     /// 获取 SOPS 版本信息（静态方法）
+    ///
+    /// # Errors
+    ///
+    /// Returns `EnvError::Io` if SOPS command fails or other I/O errors occur.
     pub fn version() -> Result<String> {
         if !Self::is_available() {
             return Ok("SOPS 未安装".to_string());
@@ -203,7 +243,7 @@ impl SopsEncryptor {
         if output.status.success() {
             String::from_utf8(output.stdout)
                 .map(|s| s.trim().to_string())
-                .map_err(|e| EnvError::EncryptionError(format!("UTF-8 错误: {}", e)))
+                .map_err(|e| EnvError::EncryptionError(format!("UTF-8 错误: {e}")))
         } else {
             Ok("未知版本".to_string())
         }
@@ -213,11 +253,16 @@ impl SopsEncryptor {
     ///
     /// # 返回
     /// 如果 SOPS 可用且能正常工作返回 Ok(())，否则返回错误
+    ///
+    /// # Errors
+    ///
+    /// Returns an error string if SOPS is not available or cannot determine version.
     pub fn test_availability() -> std::result::Result<(), String> {
         Self::check_availability()
     }
 
     /// 获取加密器统计信息
+    #[must_use]
     pub fn get_stats(&self) -> EncryptorStats {
         EncryptorStats {
             has_cache: self.cache.is_some(),
@@ -240,7 +285,18 @@ impl SopsEncryptor {
     /// let encrypted = encryptor.encrypt("my_secret")?;
     /// // 返回: ENC[SOPS:v1:...]
     /// ```
+    ///
+    /// # Panics
+    ///
+    /// Panics if the stdin/stdout pipes cannot be taken from the child process.
+    ///
+    /// # Errors
+    ///
+    /// Returns `EnvError::EncryptionError` if SOPS is not available, encryption fails, or UTF-8 conversion fails.
+    /// Returns `EnvError::Io` for I/O errors during process execution.
     pub fn encrypt(&self, value: &str) -> Result<String> {
+        use std::io::Write;
+
         if !Self::is_available() {
             return Err(EnvError::EncryptionError(
                 "SOPS 未安装或不在 PATH 中".to_string(),
@@ -263,8 +319,7 @@ impl SopsEncryptor {
 
         // 写入要加密的内容
         let mut stdin = output.stdin.take().unwrap();
-        use std::io::Write;
-        write!(stdin, "{}", value)?;
+        write!(stdin, "{value}")?;
         drop(stdin);
 
         let result = output.wait_with_output()?;
@@ -272,13 +327,12 @@ impl SopsEncryptor {
         if !result.status.success() {
             let error_msg = String::from_utf8_lossy(&result.stderr);
             return Err(EnvError::EncryptionError(format!(
-                "SOPS 加密失败: {}",
-                error_msg
+                "SOPS 加密失败: {error_msg}"
             )));
         }
 
         let encrypted = String::from_utf8(result.stdout)
-            .map_err(|e| EnvError::EncryptionError(format!("无效的 UTF-8 输出: {}", e)))?;
+            .map_err(|e| EnvError::EncryptionError(format!("无效的 UTF-8 输出: {e}")))?;
 
         // 包装成 ENC[SOPS:...] 格式
         Ok(format!("ENC[SOPS:{}]", encrypted.trim()))
@@ -291,7 +345,18 @@ impl SopsEncryptor {
     ///
     /// # 返回
     /// 解密后的明文
+    ///
+    /// # Panics
+    ///
+    /// Panics if the stdin/stdout pipes cannot be taken from the child process.
+    ///
+    /// # Errors
+    ///
+    /// Returns `EnvError::DecryptionError` if SOPS is not available, decryption fails, or invalid format.
+    /// Returns `EnvError::Io` for I/O errors during process execution.
     pub fn decrypt(&self, encrypted: &str) -> Result<String> {
+        use std::io::Write;
+
         // 1. 先检查缓存（短暂持有锁）
         if let Some(cache) = &self.cache
             && let Some(cached) = cache.get(encrypted)
@@ -331,8 +396,7 @@ impl SopsEncryptor {
 
         // 写入要解密的内容
         let mut stdin = output.stdin.take().unwrap();
-        use std::io::Write;
-        write!(stdin, "{}", inner)?;
+        write!(stdin, "{inner}")?;
         drop(stdin);
 
         let result = output.wait_with_output()?;
@@ -340,13 +404,12 @@ impl SopsEncryptor {
         if !result.status.success() {
             let error_msg = String::from_utf8_lossy(&result.stderr);
             return Err(EnvError::DecryptionError(format!(
-                "SOPS 解密失败: {}",
-                error_msg
+                "SOPS 解密失败: {error_msg}"
             )));
         }
 
         let decrypted = String::from_utf8(result.stdout)
-            .map_err(|e| EnvError::DecryptionError(format!("无效的 UTF-8 输出: {}", e)))?;
+            .map_err(|e| EnvError::DecryptionError(format!("无效的 UTF-8 输出: {e}")))?;
 
         // 3. 存入缓存（短暂持有锁）
         if let Some(cache) = &self.cache {
@@ -371,12 +434,22 @@ pub struct EncryptorStats {
 // 为向后兼容，提供静态方法包装器
 impl SopsEncryptor {
     /// 静态方法：加密（无缓存）
+    ///
+    /// # Errors
+    ///
+    /// Returns `EnvError::EncryptionError` if SOPS is not available, encryption fails, or UTF-8 conversion fails.
+    /// Returns `EnvError::Io` for I/O errors during process execution.
     pub fn encrypt_static(value: &str) -> Result<String> {
         let encryptor = SopsEncryptor::new();
         encryptor.encrypt(value)
     }
 
     /// 静态方法：解密（无缓存）
+    ///
+    /// # Errors
+    ///
+    /// Returns `EnvError::DecryptionError` if SOPS is not available, decryption fails, or invalid format.
+    /// Returns `EnvError::Io` for I/O errors during process execution.
     pub fn decrypt_static(encrypted: &str) -> Result<String> {
         let encryptor = SopsEncryptor::new();
         encryptor.decrypt(encrypted)

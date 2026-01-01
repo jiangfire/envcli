@@ -14,6 +14,10 @@ impl DotenvParser {
     /// - 格式：KEY=VALUE
     /// - VALUE 可以包含空格，无需引号
     /// - 支持多行值（以 \ 结尾）
+    ///
+    /// # Errors
+    ///
+    /// Returns parsing errors for invalid format.
     pub fn parse(content: &str, source: &EnvSource) -> Result<Vec<EnvVar>> {
         let mut vars = Vec::new();
 
@@ -43,33 +47,30 @@ impl DotenvParser {
             line_num = value_end + 1;
 
             // 解析 KEY=VALUE
-            match complete_line.split_once('=') {
-                Some((key, value)) => {
-                    let key = key.trim();
-                    let value = value.trim();
+            if let Some((key, value)) = complete_line.split_once('=') {
+                let key = key.trim();
+                let value = value.trim();
 
-                    if key.is_empty() {
-                        return Err(EnvError::Parse(format!("空的键名在行 '{}'", complete_line)));
-                    }
+                if key.is_empty() {
+                    return Err(EnvError::Parse(format!("空的键名在行 '{complete_line}'")));
+                }
 
-                    vars.push(EnvVar::new(
-                        key.to_string(),
-                        value.to_string(),
-                        source.clone(),
-                    ));
-                }
-                None => {
-                    // 不是 KEY=VALUE 格式，忽略或根据严格性决定
-                    // 这里选择跳过，保持兼容性
-                    continue;
-                }
+                vars.push(EnvVar::new(
+                    key.to_string(),
+                    value.to_string(),
+                    source.clone(),
+                ));
+            } else {
+                // 不是 KEY=VALUE 格式，忽略或根据严格性决定
+                // 这里选择跳过，保持兼容性
             }
         }
 
         Ok(vars)
     }
 
-    /// 序列化 EnvVar 列表为 .env 格式
+    /// 序列化 `EnvVar` 列表为 .env 格式
+    #[must_use]
     pub fn serialize(vars: &[EnvVar]) -> String {
         vars.iter()
             .map(|v| format!("{}={}", v.key, v.value))
@@ -101,11 +102,11 @@ mod tests {
 
     #[test]
     fn test_parse_basic() {
-        let content = r#"
+        let content = r"
 # 注释会被忽略
 KEY1=value1
 KEY2=value2
-        "#;
+        ";
 
         let result = DotenvParser::parse(content, &EnvSource::Local).unwrap();
         assert_eq!(result.len(), 2);

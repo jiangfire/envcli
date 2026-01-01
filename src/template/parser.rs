@@ -121,12 +121,12 @@ mod tests {
 
     #[test]
     fn test_parse_multiple_variables() {
-        let content = r#"
+        let content = r"
 DB_HOST={{DB_HOST}}
 DB_PORT={{DB_PORT|5432}}
 DB_USER={{DB_USER|admin}}
 DB_PASS={{DB_PASS}}
-        "#;
+        ";
 
         let template = parse_template("test", content).unwrap();
 
@@ -153,11 +153,11 @@ DB_PASS={{DB_PASS}}
 
     #[test]
     fn test_parse_inherits_directive() {
-        let content = r#"
+        let content = r"
 # @inherits db.env
 # @inherits cache.env
 APP_ENV={{APP_ENV}}
-        "#;
+        ";
 
         let template = parse_template("test", content).unwrap();
 
@@ -168,12 +168,12 @@ APP_ENV={{APP_ENV}}
 
     #[test]
     fn test_parse_with_comments() {
-        let content = r#"
+        let content = r"
 # 数据库配置
 DB_HOST={{DB_HOST}}
 # 端口，默认 5432
 DB_PORT={{DB_PORT|5432}}
-        "#;
+        ";
 
         let template = parse_template("test", content).unwrap();
 
@@ -217,7 +217,7 @@ DB_PORT={{DB_PORT|5432}}
 
     #[test]
     fn test_parse_complex_template() {
-        let content = r#"
+        let content = r"
 # @inherits base.env
 # @inherits db.env
 
@@ -230,7 +230,7 @@ DB_HOST={{DB_HOST|localhost}}
 
 # 缓存配置
 REDIS_URL={{REDIS_URL|redis://localhost:6379}}
-        "#;
+        ";
 
         let template = parse_template("web", content).unwrap();
 

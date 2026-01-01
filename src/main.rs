@@ -53,6 +53,10 @@ fn main() {
 }
 
 /// 初始化配置
+///
+/// # Errors
+///
+/// 返回配置初始化错误（当前总是成功）
 fn init_config(cli: &Cli) -> Result<Config> {
     Ok(Config {
         verbose: cli.verbose,
@@ -60,6 +64,10 @@ fn init_config(cli: &Cli) -> Result<Config> {
 }
 
 /// 运行具体命令（带插件钩子集成）- 简化为路由分发器
+///
+/// # Errors
+///
+/// 返回命令执行过程中的错误
 fn run_command(command: &Commands, store: Store, verbose: bool) -> Result<()> {
     // 创建插件管理器（如果失败则使用空管理器）
     let plugin_manager = PluginManager::new().unwrap_or_else(|_| PluginManager::empty());
@@ -128,6 +136,10 @@ fn run_command(command: &Commands, store: Store, verbose: bool) -> Result<()> {
 }
 
 /// 显示当前状态 (详细信息，但仍然保持简洁)
+///
+/// # Errors
+///
+/// 返回状态查询过程中的错误
 fn show_status(store: &Store, verbose: bool) -> Result<()> {
     // 配置目录
     let config_dir = utils::paths::get_config_dir()?;
@@ -147,11 +159,8 @@ fn show_status(store: &Store, verbose: bool) -> Result<()> {
         };
 
         println!(
-            "  {}/{}: {} [{} 个变量]",
-            source,
-            path.display(),
-            status,
-            count
+            "  {source}/{}: {status} [{count} 个变量]",
+            path.display()
         );
     }
 
@@ -170,6 +179,10 @@ fn show_status(store: &Store, verbose: bool) -> Result<()> {
 }
 
 /// 诊断问题 - 增强版，提供更全面的健康检查
+///
+/// # Errors
+///
+/// 返回诊断过程中的错误
 fn diagnose(store: &Store, verbose: bool) -> Result<()> {
     println!("🔍 EnvCLI 健康诊断工具\n");
     println!("版本: v0.1.0 | 平台: {}", std::env::consts::OS);
@@ -404,10 +417,10 @@ fn diagnose(store: &Store, verbose: bool) -> Result<()> {
         println!("✅ 所有检查通过，系统健康！");
     } else {
         if issues > 0 {
-            println!("❌ 发现 {} 个问题需要修复", issues);
+            println!("❌ 发现 {issues} 个问题需要修复");
         }
         if warnings > 0 {
-            println!("⚠️  发现 {} 个警告", warnings);
+            println!("⚠️  发现 {warnings} 个警告");
         }
 
         println!("\n💡 快速修复建议:");
@@ -425,6 +438,10 @@ fn diagnose(store: &Store, verbose: bool) -> Result<()> {
 }
 
 /// 处理配置管理命令
+///
+/// # Errors
+///
+/// 返回配置命令执行过程中的错误
 fn handle_config_commands(command: &cli::ConfigCommands, verbose: bool) -> Result<()> {
     match command {
         cli::ConfigCommands::Validate {
@@ -436,6 +453,10 @@ fn handle_config_commands(command: &cli::ConfigCommands, verbose: bool) -> Resul
 }
 
 /// 验证配置文件格式和完整性
+///
+/// # Errors
+///
+/// 返回配置验证过程中的错误
 fn validate_config(verbose: bool) -> Result<()> {
     println!("🔍 配置文件验证\n");
 
@@ -557,6 +578,10 @@ fn validate_config(verbose: bool) -> Result<()> {
 }
 
 /// 初始化配置文件
+///
+/// # Errors
+///
+/// 返回配置文件初始化过程中的错误
 fn init_config_files(force: bool) -> Result<()> {
     println!("🔧 初始化配置文件\n");
 
@@ -598,6 +623,10 @@ fn init_config_files(force: bool) -> Result<()> {
 }
 
 /// 显示配置信息
+///
+/// # Errors
+///
+/// 返回配置信息查询过程中的错误
 fn show_config_info() -> Result<()> {
     println!("📋 EnvCLI 配置信息\n");
 
@@ -659,6 +688,10 @@ fn show_config_info() -> Result<()> {
 // ==================== 重构辅助函数 (KISS/DRY/LOD 原则) ====================
 
 /// 执行插件钩子（提取重复逻辑）
+///
+/// # Errors
+///
+/// 返回插件钩子执行过程中的错误
 fn execute_plugin_hooks(
     hook_type: HookType,
     context: &HookContext,
@@ -679,6 +712,10 @@ fn merge_plugin_env(results: &[envcli::plugin::HookResult]) -> HashMap<String, S
 }
 
 /// 检查插件是否阻止执行（提取重复逻辑）
+///
+/// # Errors
+///
+/// 返回检查过程中的错误（当前总是成功）
 fn check_plugin_block(results: &[envcli::plugin::HookResult], verbose: bool) -> Result<()> {
     for result in results {
         if !result.continue_execution {
@@ -692,6 +729,10 @@ fn check_plugin_block(results: &[envcli::plugin::HookResult], verbose: bool) -> 
 }
 
 /// 验证作用域参数（提取重复逻辑）
+///
+/// # Errors
+///
+/// 返回作用域验证失败的错误
 fn validate_scope(scope: &str) -> Result<()> {
     if scope != "global" && scope != "machine" {
         return Err(EnvError::InvalidArgument(
@@ -714,6 +755,10 @@ fn create_hook_context(command: &str) -> HookContext<'_> {
 }
 
 /// 通用结果处理器（提取重复逻辑）
+///
+/// # Errors
+///
+/// 返回原始结果中的错误
 fn handle_result<T>(result: Result<T>, verbose: bool, success_msg: Option<&str>) -> Result<()> {
     match result {
         Ok(_) => {
@@ -752,6 +797,10 @@ fn get_command_name(command: &Commands) -> &'static str {
 }
 
 /// 执行命令前的插件钩子（提取重复逻辑）
+///
+/// # Errors
+///
+/// 返回插件钩子执行过程中的错误
 fn execute_pre_command_hooks(
     command_name: &str,
     plugin_manager: &PluginManager,
@@ -770,6 +819,10 @@ fn execute_pre_command_hooks(
 }
 
 /// 执行命令后的插件钩子（提取重复逻辑）
+///
+/// # Errors
+///
+/// 返回插件钩子执行过程中的错误
 fn execute_post_command_hooks(command_name: &str, plugin_manager: &PluginManager) -> Result<()> {
     let context = create_hook_context(command_name);
     let _ = execute_plugin_hooks(HookType::PostCommand, &context, plugin_manager)?;
@@ -777,6 +830,10 @@ fn execute_post_command_hooks(command_name: &str, plugin_manager: &PluginManager
 }
 
 /// 执行错误插件钩子（提取重复逻辑）
+///
+/// # Errors
+///
+/// 返回插件钩子执行过程中的错误
 fn execute_error_hooks(
     command_name: &str,
     error: &EnvError,
@@ -789,6 +846,10 @@ fn execute_error_hooks(
 }
 
 /// 处理 Run 命令的特殊逻辑
+///
+/// # Errors
+///
+/// 返回命令执行过程中的错误
 fn handle_run_command(
     env: &[String],
     from_file: &Option<String>,
@@ -833,6 +894,10 @@ fn handle_run_command(
 // ==================== 命令分组处理函数 ====================
 
 /// 处理读取类命令 (Get, List, Status, Export)
+///
+/// # Errors
+///
+/// 返回命令执行过程中的错误
 fn handle_read_commands(
     command: &Commands,
     store: &Store,
@@ -843,12 +908,12 @@ fn handle_read_commands(
         Commands::Get { key } => {
             // 检查是否有插件修改的环境变量
             if let Some(value) = merged_env.get(key) {
-                println!("{}", value);
+                println!("{value}");
                 Ok(())
             } else {
                 match store.get(key)? {
                     Some(value) => {
-                        println!("{}", value);
+                        println!("{value}");
                         Ok(())
                     }
                     None => Err(EnvError::NotFound(key.clone())),
@@ -878,7 +943,7 @@ fn handle_read_commands(
                 }
                 OutputFormat::JSON => {
                     let json = serde_json::to_string_pretty(&vars)?;
-                    println!("{}", json);
+                    println!("{json}");
                 }
             }
             Ok(())
@@ -890,11 +955,11 @@ fn handle_read_commands(
             let content = store.export(source_filter.clone())?;
 
             match output_format {
-                OutputFormat::ENV => println!("{}", content),
+                OutputFormat::ENV => println!("{content}"),
                 OutputFormat::JSON => {
                     let vars = store.list(source_filter)?;
                     let json = serde_json::to_string_pretty(&vars)?;
-                    println!("{}", json);
+                    println!("{json}");
                 }
             }
             Ok(())
@@ -907,6 +972,10 @@ fn handle_read_commands(
 }
 
 /// 处理写入类命令 (Set, Unset, Import)
+///
+/// # Errors
+///
+/// 返回命令执行过程中的错误
 fn handle_write_commands(
     command: &Commands,
     store: &Store,
@@ -945,6 +1014,10 @@ fn handle_write_commands(
 }
 
 /// 处理插件类命令
+///
+/// # Errors
+///
+/// 返回插件命令执行过程中的错误
 fn handle_plugin_commands(command: &PluginCommands, verbose: bool) -> Result<()> {
     match command {
         PluginCommands::List {
@@ -1068,7 +1141,7 @@ fn handle_plugin_commands(command: &PluginCommands, verbose: bool) -> Result<()>
                 .map_err(|e| EnvError::PluginExecutionFailed(e.to_string()))?;
 
             if verbose {
-                println!("✓ 已启用插件: {}", plugin_id);
+                println!("✓ 已启用插件: {plugin_id}");
             }
             Ok(())
         }
@@ -1080,7 +1153,7 @@ fn handle_plugin_commands(command: &PluginCommands, verbose: bool) -> Result<()>
                 .map_err(|e| EnvError::PluginExecutionFailed(e.to_string()))?;
 
             if verbose {
-                println!("✓ 已禁用插件: {}", plugin_id);
+                println!("✓ 已禁用插件: {plugin_id}");
             }
             Ok(())
         }
@@ -1094,7 +1167,7 @@ fn handle_plugin_commands(command: &PluginCommands, verbose: bool) -> Result<()>
                 .map_err(|e| EnvError::PluginLoadFailed(e.to_string()))?;
 
             if verbose {
-                println!("✓ 已加载插件: {}", path);
+                println!("✓ 已加载插件: {path}");
             }
             Ok(())
         }
@@ -1106,7 +1179,7 @@ fn handle_plugin_commands(command: &PluginCommands, verbose: bool) -> Result<()>
                 .map_err(|e| EnvError::PluginExecutionFailed(e.to_string()))?;
 
             if verbose {
-                println!("✓ 已卸载插件: {}", plugin_id);
+                println!("✓ 已卸载插件: {plugin_id}");
             }
             Ok(())
         }
@@ -1119,9 +1192,9 @@ fn handle_plugin_commands(command: &PluginCommands, verbose: bool) -> Result<()>
 
             if verbose {
                 if new_id == *plugin_id {
-                    println!("✓ 已重载插件: {}", plugin_id);
+                    println!("✓ 已重载插件: {plugin_id}");
                 } else {
-                    println!("✓ 已重载插件: {} -> {}", plugin_id, new_id);
+                    println!("✓ 已重载插件: {plugin_id} -> {new_id}");
                 }
             }
             Ok(())
@@ -1457,6 +1530,10 @@ fn handle_plugin_commands(command: &PluginCommands, verbose: bool) -> Result<()>
 }
 
 /// 处理加密类命令 (Encrypt, Decrypt, SetEncrypt, CheckSops)
+///
+/// # Errors
+///
+/// 返回加密命令执行过程中的错误
 fn handle_encrypt_commands(command: &Commands, store: &Store, verbose: bool) -> Result<()> {
     match command {
         Commands::Encrypt { key, value, target } => {
@@ -1536,6 +1613,10 @@ fn handle_encrypt_commands(command: &Commands, store: &Store, verbose: bool) -> 
 }
 
 /// 处理系统类命令 (SystemSet, SystemUnset, Doctor, Run)
+///
+/// # Errors
+///
+/// 返回系统命令执行过程中的错误
 fn handle_system_commands(
     command: &Commands,
     store: &Store,
@@ -1572,6 +1653,10 @@ fn handle_system_commands(
 }
 
 /// 处理模板类命令
+///
+/// # Errors
+///
+/// 返回模板命令执行过程中的错误
 fn handle_template_commands(command: &TemplateCommands, verbose: bool) -> Result<()> {
     let engine = template::TemplateEngine::new()?;
 
@@ -1736,6 +1821,10 @@ fn handle_template_commands(command: &TemplateCommands, verbose: bool) -> Result
 }
 
 /// 处理缓存管理命令
+///
+/// # Errors
+///
+/// 返回缓存命令执行过程中的错误
 fn handle_cache_commands(command: &CacheCommands, store: &Store, verbose: bool) -> Result<()> {
     match command {
         CacheCommands::Stats => {

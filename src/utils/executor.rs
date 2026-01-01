@@ -1,8 +1,8 @@
 //! 跨平台命令执行器
 //!
 //! 自动识别操作系统并使用正确的执行方式
-//! Windows 使用 Command::new() 直接执行
-//! Unix 使用 Command::new() 直接执行
+//! Windows 使用 `Command::new()` 直接执行
+//! Unix 使用 `Command::new()` 直接执行
 //!
 //! 注意：所有平台都继承父进程的 stdin/stdout/stderr
 
@@ -22,6 +22,15 @@ impl CommandExecutor {
     ///
     /// # 返回
     /// 子进程的退出码
+    ///
+    /// # Panics
+    ///
+    /// Panics if the command slice is empty (this is checked before reaching the unwrap).
+    ///
+    /// # Errors
+    ///
+    /// Returns `EnvError::CommandExecutionFailed` if the command is empty.
+    /// Returns `EnvError::Io` for I/O errors during process execution.
     pub fn exec_with_env(command: &[String], env_vars: &HashMap<String, String>) -> Result<i32> {
         if command.is_empty() {
             return Err(EnvError::CommandExecutionFailed("命令不能为空".to_string()));
@@ -64,8 +73,7 @@ impl CommandExecutor {
         // 执行并等待
         let status = cmd.status().map_err(|e| {
             EnvError::CommandNotFound(format!(
-                "{}: {} (请确保命令在 PATH 中或使用完整路径)",
-                program, e
+                "{program}: {e} (请确保命令在 PATH 中或使用完整路径)"
             ))
         })?;
 
@@ -99,8 +107,7 @@ impl CommandExecutor {
         // 执行并等待
         let status = cmd.status().map_err(|e| {
             EnvError::CommandNotFound(format!(
-                "{}: {} (请确保命令在 PATH 中或使用完整路径)",
-                program, e
+                "{program}: {e} (请确保命令在 PATH 中或使用完整路径)"
             ))
         })?;
 
