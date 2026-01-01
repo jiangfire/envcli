@@ -521,37 +521,29 @@ mod tests {
 
         #[test]
         fn test_ensure_project_dir_creates_directory() {
-            let temp_dir = tempfile::tempdir().unwrap();
-            let original_dir = std::env::current_dir().unwrap();
+            use crate::test_utils::with_temp_dir;
 
-            // 切换到临时目录
-            std::env::set_current_dir(&temp_dir).unwrap();
+            with_temp_dir(|temp_dir| {
+                let result = ensure_project_dir();
+                assert!(result.is_ok());
 
-            let result = ensure_project_dir();
-            assert!(result.is_ok());
-
-            let project_dir = temp_dir.path().join(".envcli");
-            assert!(project_dir.exists());
-
-            // 恢复原目录
-            std::env::set_current_dir(original_dir).unwrap();
+                let project_dir = temp_dir.path().join(".envcli");
+                assert!(project_dir.exists());
+            });
         }
 
         #[test]
         fn test_ensure_project_dir_idempotent() {
-            let temp_dir = tempfile::tempdir().unwrap();
-            let original_dir = std::env::current_dir().unwrap();
+            use crate::test_utils::with_temp_dir;
 
-            std::env::set_current_dir(&temp_dir).unwrap();
+            with_temp_dir(|_| {
+                // 第一次调用
+                ensure_project_dir().unwrap();
+                // 第二次调用（目录已存在）
+                let result = ensure_project_dir();
 
-            // 第一次调用
-            ensure_project_dir().unwrap();
-            // 第二次调用（目录已存在）
-            let result = ensure_project_dir();
-
-            assert!(result.is_ok());
-
-            std::env::set_current_dir(original_dir).unwrap();
+                assert!(result.is_ok());
+            });
         }
     }
 
@@ -622,33 +614,28 @@ mod tests {
 
         #[test]
         fn test_full_workflow() {
-            let temp_dir = tempfile::tempdir().unwrap();
-            let original_dir = std::env::current_dir().unwrap();
+            use crate::test_utils::with_temp_dir;
 
-            // 切换到临时目录
-            std::env::set_current_dir(&temp_dir).unwrap();
+            with_temp_dir(|_| {
+                // 1. 确保项目目录
+                ensure_project_dir().unwrap();
 
-            // 1. 确保项目目录
-            ensure_project_dir().unwrap();
+                // 2. 获取本地层路径
+                let local_path = get_layer_path(&EnvSource::Local).unwrap();
 
-            // 2. 获取本地层路径
-            let local_path = get_layer_path(&EnvSource::Local).unwrap();
+                // 3. 写入文件
+                write_file_safe(&local_path, "TEST_VAR=test_value").unwrap();
 
-            // 3. 写入文件
-            write_file_safe(&local_path, "TEST_VAR=test_value").unwrap();
+                // 4. 读取文件
+                let content = read_file(&local_path).unwrap();
+                assert!(content.contains("TEST_VAR=test_value"));
 
-            // 4. 读取文件
-            let content = read_file(&local_path).unwrap();
-            assert!(content.contains("TEST_VAR=test_value"));
+                // 5. 追加内容
+                append_to_file_unique(&local_path, "ANOTHER_VAR=another").unwrap();
 
-            // 5. 追加内容
-            append_to_file_unique(&local_path, "ANOTHER_VAR=another").unwrap();
-
-            // 6. 验证文件存在
-            assert!(file_exists(&local_path));
-
-            // 恢复原目录
-            std::env::set_current_dir(original_dir).unwrap();
+                // 6. 验证文件存在
+                assert!(file_exists(&local_path));
+            });
         }
     }
 }

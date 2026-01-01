@@ -18,6 +18,10 @@ pub mod plugin;
 // CLI
 pub mod cli;
 
+// 测试工具 (仅在测试时编译)
+#[cfg(test)]
+pub mod test_utils;
+
 // 重新导出主要类型
 pub use error::{EnvError, Result};
 pub use types::{Config, EnvSource, EnvVar, OutputFormat};
