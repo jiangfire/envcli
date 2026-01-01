@@ -14,19 +14,35 @@ fn create_test_env() -> TempDir {
 
 /// 获取 env 命令的路径
 fn get_env_command() -> std::path::PathBuf {
-    // 在调试模式下，二进制文件通常在 target/debug/env
-    // 在发布模式下，在 target/release/env
-    let debug_path = std::path::Path::new("target").join("debug").join("env");
-    let release_path = std::path::Path::new("target").join("release").join("env");
+    // 使用 CARGO_MANIFEST_DIR 确保在任何工作目录下都能找到二进制文件
+    // 这解决了在临时目录运行测试时找不到二进制的问题
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
+        .expect("CARGO_MANIFEST_DIR 应该在 cargo test 中可用");
 
-    if debug_path.exists() {
-        debug_path
-    } else if release_path.exists() {
-        release_path
+    let mut path = std::path::PathBuf::from(manifest_dir);
+    path.push("target");
+    path.push("debug");
+
+    // Windows 需要 .exe 扩展名，Unix 不需要
+    if cfg!(windows) {
+        path.push("env.exe");
     } else {
-        // 如果都不存在，返回 debug 路径（让测试失败并提示需要构建）
-        debug_path
+        path.push("env");
     }
+
+    // 如果 debug 版本不存在，尝试 release 版本
+    if !path.exists() {
+        path.pop(); // 移除 env/env.exe
+        path.pop(); // 移除 debug
+        path.push("release");
+        if cfg!(windows) {
+            path.push("env.exe");
+        } else {
+            path.push("env");
+        }
+    }
+
+    path
 }
 
 mod basic_commands {
