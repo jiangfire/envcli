@@ -39,6 +39,9 @@ jobs:
       - name: Run clippy
         run: cargo clippy --all-targets -- -D warnings
 
+      - name: Build debug binary
+        run: cargo build
+
       - name: Run tests
         run: cargo test --verbose
 
