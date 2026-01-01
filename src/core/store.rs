@@ -172,6 +172,9 @@ impl Store {
         let new_content = DotenvParser::serialize(&vars);
         write_file_safe(&path, &new_content)?;
 
+        // 清除文件缓存，确保下一次读取获取最新内容
+        self.invalidate_cache(&path);
+
         if self.config.verbose {
             println!("✓ 设置变量 {} = {}", key, value);
         }
@@ -206,6 +209,9 @@ impl Store {
             let new_content = DotenvParser::serialize(&remaining);
             write_file_safe(&path, &new_content)?;
         }
+
+        // 清除文件缓存，确保下一次读取获取最新内容
+        self.invalidate_cache(&path);
 
         if self.config.verbose {
             println!("✓ 删除变量 {}", key);
