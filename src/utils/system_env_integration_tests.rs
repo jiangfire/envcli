@@ -5,8 +5,8 @@
 #[cfg(test)]
 #[cfg(target_os = "windows")]
 mod windows_registry_tests {
-    use std::collections::HashMap;
     use crate::utils::paths::get_system_env;
+    use std::collections::HashMap;
 
     #[test]
     fn test_windows_registry_read_integration() {

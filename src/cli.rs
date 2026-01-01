@@ -656,9 +656,7 @@ pub fn validate_writable_source(source_str: &str) -> Result<EnvSource, EnvError>
         .ok_or_else(|| EnvError::InvalidSource(source_str.to_string()))?;
 
     if !source.is_writable() {
-        return Err(EnvError::PermissionDenied(format!(
-            "层级 {source} 不可写"
-        )));
+        return Err(EnvError::PermissionDenied(format!("层级 {source} 不可写")));
     }
 
     Ok(source)

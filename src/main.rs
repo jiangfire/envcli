@@ -158,10 +158,7 @@ fn show_status(store: &Store, verbose: bool) -> Result<()> {
             0
         };
 
-        println!(
-            "  {source}/{}: {status} [{count} 个变量]",
-            path.display()
-        );
+        println!("  {source}/{}: {status} [{count} 个变量]", path.display());
     }
 
     // 合并后的变量总数

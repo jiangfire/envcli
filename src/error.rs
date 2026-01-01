@@ -334,8 +334,12 @@ impl From<PluginError> for EnvError {
     fn from(err: PluginError) -> Self {
         match err {
             PluginError::NotFound(s) => EnvError::PluginNotFound(s),
-            PluginError::LoadFailed(s) | PluginError::AlreadyExists(s) => EnvError::PluginLoadFailed(s),
-            PluginError::ExecutionFailed(s) | PluginError::Timeout(s) | PluginError::Unsupported(s) => EnvError::PluginExecutionFailed(s),
+            PluginError::LoadFailed(s) | PluginError::AlreadyExists(s) => {
+                EnvError::PluginLoadFailed(s)
+            }
+            PluginError::ExecutionFailed(s)
+            | PluginError::Timeout(s)
+            | PluginError::Unsupported(s) => EnvError::PluginExecutionFailed(s),
             PluginError::ConfigError(s) => EnvError::PluginConfigError(s),
             PluginError::DependencyMissing(s) => EnvError::PluginDependencyMissing(s),
             PluginError::Incompatible(s) => EnvError::PluginIncompatible(s),
