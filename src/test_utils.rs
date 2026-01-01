@@ -11,6 +11,12 @@ pub struct EnvGuard {
     original_vars: HashMap<String, String>,
 }
 
+impl Default for EnvGuard {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EnvGuard {
     /// 创建一个新的环境守卫，记录当前环境变量
     pub fn new() -> Self {
@@ -78,6 +84,12 @@ pub struct TempDirGuard {
     original_dir: std::path::PathBuf,
 }
 
+impl Default for TempDirGuard {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TempDirGuard {
     /// 创建临时目录并切换到该目录
     pub fn new() -> Self {
@@ -141,10 +153,8 @@ where
         guard.set_var(key, value);
     }
 
-    let result = f();
-
     // 清理工作由 EnvGuard::drop 自动完成
-    result
+    f()
 }
 
 /// 断言环境变量存在且值正确
