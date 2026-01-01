@@ -132,13 +132,27 @@ where
     F: Fn(&TempDir) -> R,
 {
     let temp_dir = tempfile::tempdir().unwrap();
-    let original_dir = std::env::current_dir().unwrap();
+    let original_dir_result = std::env::current_dir();
+
+    // 切换到临时目录
     std::env::set_current_dir(&temp_dir).unwrap();
 
-    let result = f(&temp_dir);
+    // 使用 panic hook 确保即使测试 panic 也能恢复目录
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(&temp_dir)));
 
-    std::env::set_current_dir(original_dir).unwrap();
-    result
+    // 尝试恢复原始目录（即使测试失败也要执行）
+    if let Ok(original_dir) = original_dir_result {
+        // 忽略恢复失败，在 CI 环境中这可能是可以接受的
+        let _ = std::env::set_current_dir(original_dir);
+    }
+
+    // 如果测试 panic，重新抛出 panic
+    match result {
+        Ok(val) => val,
+        Err(panic_payload) => {
+            std::panic::resume_unwind(panic_payload);
+        }
+    }
 }
 
 /// 简化的环境变量测试包装器
