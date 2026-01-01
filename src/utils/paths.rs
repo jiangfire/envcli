@@ -125,10 +125,25 @@ pub fn get_system_env_cache_stats() -> (bool, Duration) {
 ///
 /// Returns `EnvError::ConfigDirMissing` if config directory cannot be determined.
 pub fn get_config_dir() -> Result<PathBuf> {
-    let home = dirs::home_dir()
-        .ok_or_else(|| EnvError::ConfigDirMissing("无法找到用户主目录".to_string()))?;
+    // 1. 首选：dirs::home_dir()
+    if let Some(home) = dirs::home_dir() {
+        return Ok(home.join(".envcli"));
+    }
 
-    Ok(home.join(".envcli"))
+    // 2. 回退：HOME 环境变量 (Unix/macOS)
+    if let Ok(home) = std::env::var("HOME") {
+        return Ok(PathBuf::from(home).join(".envcli"));
+    }
+
+    // 3. 回退：USERPROFILE 环境变量 (Windows)
+    if let Ok(user_profile) = std::env::var("USERPROFILE") {
+        return Ok(PathBuf::from(user_profile).join(".envcli"));
+    }
+
+    // 4. 最终回退：当前工作目录
+    let current_dir = std::env::current_dir()
+        .map_err(|e| EnvError::ConfigDirMissing(format!("无法获取当前目录: {e}")))?;
+    Ok(current_dir.join(".envcli"))
 }
 
 /// 获取指定层级的文件路径
