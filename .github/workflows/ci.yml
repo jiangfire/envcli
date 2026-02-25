@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches: [ master, main ]
+    tags: [ 'v*' ]
   pull_request:
     branches: [ master, main ]
 
@@ -51,9 +52,9 @@ jobs:
       - name: Test binary
         run: |
           if [ "${{ runner.os }}" = "Windows" ]; then
-            target/release/env.exe --version
+            target/release/envcli.exe --version
           else
-            target/release/env --version
+            target/release/envcli --version
           fi
         shell: bash
 
@@ -83,8 +84,8 @@ jobs:
           VERSION=$(grep -E '^version\s*=' Cargo.toml | head -1 | cut -d'"' -f2)
           TAG_VERSION=${GITHUB_REF#refs/tags/v}
 
-          if [ "v$VERSION" != "$TAG_VERSION" ]; then
-            echo "❌ 版本不一致: Cargo.toml ($VERSION) vs Tag (v$VERSION)"
+          if [ "$VERSION" != "$TAG_VERSION" ]; then
+            echo "❌ 版本不一致: Cargo.toml (v$VERSION) vs Tag (v$TAG_VERSION)"
             exit 1
           fi
 
@@ -92,18 +93,18 @@ jobs:
 
       - name: Check CHANGELOG
         run: |
-          if [ -f "CHANGELOG.md" ]; then
-            if ! grep -q "## \[v${GITHUB_REF#refs/tags/v}\]" CHANGELOG.md; then
-              echo "⚠️  警告: CHANGELOG.md 中未找到此版本的记录"
+          if [ -f "docs/CHANGELOG.md" ]; then
+            if ! grep -q "## \[${GITHUB_REF#refs/tags/v}\]" docs/CHANGELOG.md; then
+              echo "⚠️  警告: docs/CHANGELOG.md 中未找到此版本的记录"
             else
               echo "✅ CHANGELOG 已更新"
             fi
           else
-            echo "⚠️  警告: 未找到 CHANGELOG.md 文件"
+            echo "⚠️  警告: 未找到 docs/CHANGELOG.md 文件"
           fi
 
       - name: Run full test suite
-        run: cargo test --all-features
+        run: cargo test
 
       - name: Check for warnings
         run: |

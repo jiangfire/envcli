@@ -1,41 +1,48 @@
 [package]
 name = "envcli"
-version = "0.1.0"
+version = "0.3.0"
 edition = "2024"
 
 [[bin]]
-name = "env"
+name = "envcli"
 path = "src/main.rs"
 
 [dependencies]
+# 异步运行时
+tokio = { version = "1.35", features = ["full"] }
+async-trait = "0.1"
+
+# CLI 和序列化
 clap = { version = "4.4", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "1.0"
-dirs = "5.0"
-regex = "1.10"
-toml = "0.8"
-libloading = "0.8"
-ring = "0.17"              # 密码学库（签名验证）
-hex = "0.4"                # 十六进制编码
-sha2 = "0.10"              # SHA-256哈希（重放防护）
-notify = { version = "6.1", optional = true }  # 文件变更监听（自动热重载）
+anyhow = "1.0"
 
-# Windows-specific dependencies
+dirs = "5.0"
+
+# 工具和文本处理
+regex = "1.10"
+chrono = { version = "0.4", features = ["serde"] }
+
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# 错误美化
+miette = { version = "7.0", features = ["fancy"] }
+
+# Windows 特定依赖
 [target.'cfg(windows)'.dependencies]
-winreg = "0.52"  # Windows 注册表访问
+winreg = "0.52"
 
 [dev-dependencies]
-# 测试框架
-tempfile = "3.8"           # 临时文件和目录
-assert_cmd = "2.0"         # 命令行集成测试
-predicates = "3.0"         # 断言库
-serial_test = "3.0"        # 串行测试执行
-# 覆盖率工具（可选，需要安装 cargo-tarpaulin）
-# cargo install cargo-tarpaulin
-# cargo tarpaulin --out Html
+tempfile = "3.8"
+assert_cmd = "2.0"
+predicates = "3.0"
 
 [profile.test]
 opt-level = 0
 debug = true
 
+[profile.release]
+opt-level = 3
+lto = true

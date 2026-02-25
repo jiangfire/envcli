@@ -25,20 +25,20 @@ fn get_env_command() -> std::path::PathBuf {
 
     // Windows 需要 .exe 扩展名，Unix 不需要
     if cfg!(windows) {
-        path.push("env.exe");
+        path.push("envcli.exe");
     } else {
-        path.push("env");
+        path.push("envcli");
     }
 
     // 如果 debug 版本不存在，尝试 release 版本
     if !path.exists() {
-        path.pop(); // 移除 env/env.exe
+        path.pop(); // 移除 envcli/envcli.exe
         path.pop(); // 移除 debug
         path.push("release");
         if cfg!(windows) {
-            path.push("env.exe");
+            path.push("envcli.exe");
         } else {
-            path.push("env");
+            path.push("envcli");
         }
     }
 
@@ -302,7 +302,7 @@ mod run_command {
         let mut run_cmd = Command::new(&cmd);
         run_cmd
             .arg("run")
-            .arg("--var")
+            .arg("--env")
             .arg("TEMP_VAR=temp_value")
             .args(&echo_cmd)
             .current_dir(&temp_dir);
@@ -342,47 +342,6 @@ mod doctor_command {
 
         // Doctor 命令应该成功
         doctor_cmd.assert().success();
-    }
-}
-
-mod template_commands {
-    use super::*;
-
-    #[test]
-    fn test_template_create_and_render() {
-        let temp_dir = create_test_env();
-        let cmd = get_env_command();
-
-        // 创建模板
-        let mut create_cmd = Command::new(&cmd);
-        create_cmd
-            .arg("template")
-            .arg("create")
-            .arg("test_template")
-            .arg("--vars")
-            .arg("DB_HOST")
-            .arg("DB_PORT")
-            .current_dir(&temp_dir);
-
-        create_cmd.assert().success();
-
-        // 渲染模板
-        let mut render_cmd = Command::new(&cmd);
-        render_cmd
-            .arg("template")
-            .arg("render")
-            .arg("test_template")
-            .arg("--var")
-            .arg("DB_HOST=localhost")
-            .arg("--var")
-            .arg("DB_PORT=5432")
-            .current_dir(&temp_dir);
-
-        render_cmd
-            .assert()
-            .success()
-            .stdout(predicate::str::contains("DB_HOST=localhost"))
-            .stdout(predicate::str::contains("DB_PORT=5432"));
     }
 }
 

@@ -16,27 +16,27 @@ jobs:
           # Windows
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            artifact_name: env.exe
+            artifact_name: envcli.exe
             artifact_asset: envcli-x86_64-pc-windows-msvc.exe
           # Linux x86_64
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            artifact_name: env
+            artifact_name: envcli
             artifact_asset: envcli-x86_64-unknown-linux-gnu
           # Linux ARM64
           - os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
-            artifact_name: env
+            artifact_name: envcli
             artifact_asset: envcli-aarch64-unknown-linux-gnu
           # macOS x86_64
           - os: macos-latest
             target: x86_64-apple-darwin
-            artifact_name: env
+            artifact_name: envcli
             artifact_asset: envcli-x86_64-apple-darwin
           # macOS ARM64
           - os: macos-latest
             target: aarch64-apple-darwin
-            artifact_name: env
+            artifact_name: envcli
             artifact_asset: envcli-aarch64-apple-darwin
 
     runs-on: ${{ matrix.os }}
@@ -160,21 +160,21 @@ jobs:
             ```bash
             wget https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/envcli-x86_64-unknown-linux-gnu
             chmod +x envcli-x86_64-unknown-linux-gnu
-            sudo mv envcli-x86_64-unknown-linux-gnu /usr/local/bin/env
+            sudo mv envcli-x86_64-unknown-linux-gnu /usr/local/bin/envcli
             ```
 
             #### Linux ARM64
             ```bash
             wget https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/envcli-aarch64-unknown-linux-gnu
             chmod +x envcli-aarch64-unknown-linux-gnu
-            sudo mv envcli-aarch64-unknown-linux-gnu /usr/local/bin/env
+            sudo mv envcli-aarch64-unknown-linux-gnu /usr/local/bin/envcli
             ```
 
             #### Windows
             ```powershell
             # 下载并添加到 PATH
-            Invoke-WebRequest -Uri "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/envcli-x86_64-pc-windows-msvc.exe" -OutFile "env.exe"
-            # 将 env.exe 所在目录添加到 PATH 环境变量
+            Invoke-WebRequest -Uri "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/envcli-x86_64-pc-windows-msvc.exe" -OutFile "envcli.exe"
+            # 将 envcli.exe 所在目录添加到 PATH 环境变量
             ```
 
             #### macOS
@@ -182,41 +182,29 @@ jobs:
             # Intel 芯片
             wget https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/envcli-x86_64-apple-darwin
             chmod +x envcli-x86_64-apple-darwin
-            sudo mv envcli-x86_64-apple-darwin /usr/local/bin/env
+            sudo mv envcli-x86_64-apple-darwin /usr/local/bin/envcli
 
             # Apple Silicon 芯片
             wget https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/envcli-aarch64-apple-darwin
             chmod +x envcli-aarch64-apple-darwin
-            sudo mv envcli-aarch64-apple-darwin /usr/local/bin/env
+            sudo mv envcli-aarch64-apple-darwin /usr/local/bin/envcli
             ```
 
             ### ✨ 功能特性
 
             - ✅ **跨平台支持**: Windows, Linux, macOS
-            - ✅ **系统环境变量管理**: 永久设置/删除环境变量
-            - ✅ **多层配置**: System, User, Project, Local
-            - ✅ **热重载**: 配置文件变更自动重载
-            - ✅ **签名验证**: 插件安全验证
-            - ✅ **加密支持**: SOPS 集成
-            - ✅ **插件系统**: 可扩展架构
+            - ✅ **多层配置**: Local / Project / User / System
+            - ✅ **导入导出**: `.env` 与 `json` 格式
+            - ✅ **运行注入**: `run --env ... -- <command>`
+            - ✅ **诊断与缓存**: `doctor` + `cache` + `config`
 
             ### 📖 使用示例
 
             ```bash
-            # 设置系统环境变量
-            envcli system-set DB_HOST localhost --scope global
-
-            # 读取环境变量
+            envcli set DB_HOST localhost --target project
             envcli get DB_HOST
-
-            # 设置项目级变量
-            envcli set API_KEY secret
-
-            # 列出所有变量
-            envcli list
-
-            # 运行带临时变量的命令
-            envcli run --env DEBUG=true -- cargo run
+            envcli export --format json > env.json
+            envcli run --env APP_ENV=dev -- cargo run
             ```
 
             ### 🔐 SHA256 校验
@@ -238,11 +226,10 @@ jobs:
 
             ### 🔄 更新日志
 
-            查看 [CHANGELOG.md](CHANGELOG.md) 获取详细更新信息。
+            查看 `docs/CHANGELOG.md` 获取详细更新信息。
 
             ---
 
-            **发布时间**: ${{ github.event.head_commit.timestamp }}
             **Git 提交**: ${{ github.sha }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

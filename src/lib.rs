@@ -1,39 +1,24 @@
-//! `EnvCLI` 库
+//! EnvCLI - 跨平台环境变量管理工具
 //!
-//! 跨平台环境变量管理工具
+//! 重构后的代码结构，遵循 Clean Architecture 原则
 
-// 核心模块
-pub mod error;
-pub mod types;
-pub mod utils;
+// 领域层
+pub mod domain;
 
-// 功能模块
-pub mod config;
-pub mod core;
-pub mod template;
+// 应用层
+pub mod application;
 
-// 插件系统
-pub mod plugin;
+// 基础设施层
+pub mod infrastructure;
 
-// CLI
+// 命令层
+pub mod commands;
+
+// CLI 定义
 pub mod cli;
 
-// 测试工具 (仅在测试时编译)
-#[cfg(test)]
-pub mod test_utils;
+// 应用程序容器
+pub mod app;
 
-// 重新导出主要类型
-pub use error::{EnvError, Result};
-pub use types::{Config, EnvSource, EnvVar, OutputFormat};
-
-// 插件系统快捷访问
-pub use plugin::{
-    GlobalSettings, HookChainBuilder, HookContext, HookDispatcher, HookErrorHandler, HookExecutor,
-    HookPriority, HookResult, HookStats, HookType, LoaderFactory, PLUGIN_SDK_VERSION,
-    PLUGIN_SYSTEM_VERSION, Platform, Plugin, PluginConfig, PluginConfigFormatter,
-    PluginConfigManager, PluginError, PluginInfo, PluginLoader, PluginManager, PluginManagerStats,
-    PluginMetadata, PluginRequest, PluginResponse, PluginStatus, PluginType,
-    create_default_manager,
-};
-
-// 宏导出 (使用 #[macro_export] 定义的宏在 crate 根自动可用)
+// 重新导出常用类型
+pub use domain::{DomainError, EnvSource, EnvVar, OutputFormat, Result};
